@@ -104,12 +104,42 @@ Message analysis runs on Claude (`claude-opus-5`) via a Convex action in
 `convex/anthropic.ts`, using structured outputs so the verdict comes back as typed
 `{risk, score, reasons, spokenVerdict}` rather than prose to be parsed.
 
+### First run
+
+```bash
+npm install
+npx convex dev          # creates the deployment and convex/_generated; leave running
+```
+
+Copy the deployment URL it prints into `.env.local` (an address, not a secret):
+
+```
+VITE_CONVEX_URL=https://your-deployment.convex.cloud
+```
+
+Add your key to the same file, then hand it to the backend:
+
+```
+ANTHROPIC_API_KEY=sk-ant-...
+```
+
+```bash
+npm run key             # stores it on the Convex deployment
+npm run dev
+```
+
+`npm run key` with nothing pasted prompts for the key instead, with the input masked so
+it never appears on screen or in shell history. Add `-- --prod` to target production.
+
 ### Where the key lives, and why
 
 **The Anthropic key is never in the browser.** This is a Vite SPA: every `VITE_`-prefixed
 variable is inlined into the public JavaScript bundle, so a key placed there is readable
-by anyone who opens devtools. The key is set on the Convex deployment instead, and read
-only inside the action:
+by anyone who opens devtools. A *plain* `ANTHROPIC_API_KEY` in `.env.local` is safe —
+Vite exposes only `VITE_`-prefixed names to the bundle — and `npm run key` moves it to
+the Convex deployment, which is the only place the action reads it from.
+
+Equivalent by hand, if you would rather not use the script:
 
 ```bash
 npx convex env set ANTHROPIC_API_KEY sk-ant-...
