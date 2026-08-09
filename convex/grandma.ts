@@ -12,16 +12,33 @@ export const persistAnalysis = internalMutation({args:{userId:v.id('users'),cont
   return analysisId;
 }});
 
-export const analyzeSuspiciousMessage = action({args:{userId:v.id('users'),content:v.string(),claimedOrganization:v.optional(v.string())},handler:async(ctx,args):Promise<{analysisId:string,risk:string,score:number,reasons:string[],officialContact?:string}>=>{
-  const text=args.content.toLowerCase(); const reasons:string[]=[]; let score=8;
-  const rules:[[RegExp,number,string],...Array<[RegExp,number,string]>]=[
+// Offline fallback. Used when no Anthropic key is configured on the deployment, and
+// whenever the model call fails — a scam check that errors is worse than a coarse one.
+function heuristic(content:string):{risk:'low'|'medium'|'high',score:number,reasons:string[]}{
+  const text=content.toLowerCase(); const reasons:string[]=[]; let score=8;
+  const rules:Array<[RegExp,number,string]>=[
     [/(gift card|crypto|bitcoin|wire transfer|safe account)/i,35,'Unusual or irreversible payment method'],
     [/(urgent|immediately|right now|act now)/i,20,'Uses urgency to prevent careful checking'],
     [/(do not tell|keep this secret|don.t call)/i,30,'Requests secrecy or discourages verification'],
     [/(password|pin|social security|verification code)/i,25,'Requests sensitive information'],
     [/(click|http|link)/i,15,'Contains a link that needs verification']];
-  for(const [pattern,points,reason] of rules)if(pattern.test(text)){score+=points;reasons.push(reason)} score=Math.min(score,100);
-  const risk=score>=70?'high':score>=30?'medium':'low';
+  for(const [pattern,points,reason] of rules)if(pattern.test(text)){score+=points;reasons.push(reason)}
+  score=Math.min(score,100);
+  return {risk:score>=70?'high':score>=30?'medium':'low',score,reasons};
+}
+
+// Analysis only — no user, no persistence. This is what the browser calls, so it
+// never needs to hold a user id, and the Anthropic key stays on the backend.
+export const checkMessage = action({args:{text:v.string(),sender:v.optional(v.string())},handler:async(ctx,args):Promise<{risk:string,score:number,reasons:string[],spokenVerdict:string,source:'model'|'heuristic'}>=>{
+  const verdict=await ctx.runAction(internal.anthropic.checkMessage,{text:args.text,sender:args.sender}).catch(()=>null);
+  if(verdict) return {...verdict,source:'model'};
+  const fallback=heuristic(args.text);
+  return {...fallback,reasons:fallback.reasons.length?fallback.reasons:['No common scam signals found'],spokenVerdict:'',source:'heuristic'};
+}});
+
+export const analyzeSuspiciousMessage = action({args:{userId:v.id('users'),content:v.string(),claimedOrganization:v.optional(v.string())},handler:async(ctx,args):Promise<{analysisId:string,risk:string,score:number,reasons:string[],officialContact?:string}>=>{
+  const verdict=await ctx.runAction(internal.anthropic.checkMessage,{text:args.content,sender:args.claimedOrganization}).catch(()=>null);
+  const {risk,score,reasons}=verdict??heuristic(args.content);
   let officialContact:string|undefined;
   if(args.claimedOrganization){
     // Production deployments should route this through an allow-listed directory API.

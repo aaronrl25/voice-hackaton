@@ -98,6 +98,49 @@ npm run dev
 
 The interface runs immediately in demo mode and uses the browser speech-recognition API through `src/voiceos.ts`. To connect a hosted Convex deployment, run `npx convex dev`, copy the generated URL into `.env.local` as `VITE_CONVEX_URL`, and connect the generated API bindings in the UI data adapter.
 
+## Scam analysis with Claude
+
+Message analysis runs on Claude (`claude-opus-5`) via a Convex action in
+`convex/anthropic.ts`, using structured outputs so the verdict comes back as typed
+`{risk, score, reasons, spokenVerdict}` rather than prose to be parsed.
+
+### Where the key lives, and why
+
+**The Anthropic key is never in the browser.** This is a Vite SPA: every `VITE_`-prefixed
+variable is inlined into the public JavaScript bundle, so a key placed there is readable
+by anyone who opens devtools. The key is set on the Convex deployment instead, and read
+only inside the action:
+
+```bash
+npx convex env set ANTHROPIC_API_KEY sk-ant-...
+npx convex env list
+```
+
+Three things enforce that boundary:
+
+- **The browser calls Convex, not Anthropic.** `grandma:checkMessage` takes the message
+  text and returns a verdict; the SDK and the key stay on the backend. Verified: the
+  built bundle contains no reference to `api.anthropic.com`, `x-api-key`, or the SDK.
+- **A build-time trap in `src/analysis.ts`** throws if any `VITE_` variable looks like a
+  secret (`ANTHROPIC`, `API_KEY`, `SECRET`, `TOKEN`, `PASSWORD`), naming the offending
+  variable and the command to fix it. Confirmed by planting a decoy key: it lands
+  verbatim in `dist/`, and the guard stops the app before it can ship.
+- **`.gitignore` covers `.env` and `.env.*`**, with `!.env.example` re-included.
+
+### Prompt injection
+
+The message being analysed is attacker-controlled: it is wrapped in `<message>` tags and
+the system prompt states that everything inside is data, never instructions. Text trying
+to talk the classifier into a "safe" verdict is treated as evidence of a scam and scored
+high. The prompt also forbids offering any phone number or link **from** the message as a
+way to verify it — that is how these scams close.
+
+### Degradation
+
+No key configured, an API error, or a safety refusal all fall back to the regex heuristic
+in `convex/grandma.ts`. A scam check that errors is worse than a coarse one, so the app
+always returns a verdict.
+
 ## Safety model
 
 - Low risk: assist automatically and write a receipt.

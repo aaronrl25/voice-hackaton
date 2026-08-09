@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState } from 'react';
 import { AlertTriangle, ArrowLeft, Check, CheckCircle2, ChevronRight, Clock3, FileText, Headphones, HelpCircle, Home, Info, LockKeyhole, MessageCircle, Mic, Phone, ShieldCheck, Square, UserRound, Users, Volume2, X } from 'lucide-react';
 import { contacts, seedRequests } from './data';
+import { analyzeMessage, liveAnalysis } from './analysis';
 import { interpret, type Tab } from './commands';
 import Landing from './Landing';
 import Onboarding from './Onboarding';
@@ -40,7 +41,17 @@ export default function App(){
 
   function update(id:string, patch:Partial<RequestItem>){ setItems(xs=>xs.map(x=>x.id===id?{...x,...patch}:x)); }
   function say(text:string, tone:Tone='neutral'){ setReply(text); setLastTone(tone); voiceOS.speak(text,setVoice,tone); }
-  function answer(text:string){ setHeard(text); const out=interpret(text,items,trusted.name); if(out.tab) setTab(out.tab); if(out.open) setSelected(out.open); say(out.say,out.tone); }
+  // The seeded verdict shows immediately; Claude's replaces it when it lands, so the
+  // person is never left staring at a spinner during a safety check.
+  function reanalyze(x:RequestItem){
+    if(!liveAnalysis) return;
+    void analyzeMessage(x.detail,x.source).then(verdict=>{
+      if(!verdict||verdict.source!=='model') return;
+      update(x.id,{risk:verdict.risk,score:verdict.score,reasons:verdict.reasons});
+      if(verdict.spokenVerdict) say(verdict.spokenVerdict,verdict.risk==='high'?'warning':verdict.risk==='low'?'friendly':'neutral');
+    });
+  }
+  function answer(text:string){ setHeard(text); const out=interpret(text,items,trusted.name); if(out.tab) setTab(out.tab); if(out.open){ setSelected(out.open); const opened=items.find(x=>x.id===out.open); if(opened) reanalyze(opened); } say(out.say,out.tone); }
   function listen(){
     if(voice==='listening'){ voiceOS.stop(); return; }
     if(voice==='speaking'){ voiceOS.cancelSpeech(); setVoice('idle'); return; }

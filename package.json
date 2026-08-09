@@ -10,12 +10,13 @@
     "convex:dev": "convex dev"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.116.0",
     "@vitejs/plugin-react": "latest",
     "convex": "latest",
     "lucide-react": "latest",
-    "vite": "latest",
     "react": "latest",
-    "react-dom": "latest"
+    "react-dom": "latest",
+    "vite": "latest"
   },
   "devDependencies": {
     "@eslint/js": "latest",
