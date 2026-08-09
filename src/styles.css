@@ -262,7 +262,16 @@ nav svg{width:1.6rem;height:1.6rem}
    voice-first rewrite renamed to .stage. He sits behind the controls and stays
    quiet: the microphone has to remain the single obvious thing on the screen. */
 .dashboard-wolfie{position:absolute;right:.8rem;bottom:0;width:7rem;height:7rem;object-fit:cover;object-position:50% 20%;border-radius:50%;border:.2rem solid #71e3ea55;box-shadow:0 .5rem 1.5rem #061a2e55;z-index:1;opacity:.5;pointer-events:none}
-.stage>*:not(.dashboard-wolfie){position:relative;z-index:2}
+.stage>*:not(.dashboard-wolfie):not(.voice-status){position:relative;z-index:2}
+
+/* Status chip from main's home, sized for this stage. Purely decorative — the
+   stage title carries the same state to screen readers via aria-live. */
+.voice-status{position:absolute;right:1rem;top:1rem;z-index:3;display:flex;align-items:center;gap:.4rem;text-transform:uppercase;letter-spacing:.06em;font-size:.72rem;font-weight:700;color:var(--cyan)}
+.voice-status>span{width:.6rem;height:.6rem;border-radius:50%;background:#43e2b5;box-shadow:0 0 0 .35rem #43e2b51c,0 0 .6rem #43e2b5}
+.voice-status i{width:2px;background:var(--cyan);height:.45rem;border-radius:1px}
+.voice-status i:nth-last-child(2){height:.8rem}
+.voice-status i:last-child{height:1.1rem}
+@media(min-width:48rem){.voice-status{right:2rem;top:1.6rem;font-size:.8rem}}
 @media(min-width:48rem){.dashboard-wolfie{width:10rem;height:10rem;right:1.6rem;opacity:.75}}
 @media(max-width:800px){.wolfie-orbit{width:300px;height:300px}}
 

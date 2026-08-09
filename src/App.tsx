@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from 'react';
-import { AlertTriangle, ArrowLeft, Check, CheckCircle2, ChevronRight, Clock3, Headphones, HelpCircle, Home, Info, LockKeyhole, Mic, Phone, ShieldCheck, Square, UserRound, Users, Volume2, X } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, Check, CheckCircle2, ChevronRight, Clock3, FileText, Headphones, HelpCircle, Home, Info, LockKeyhole, MessageCircle, Mic, Phone, ShieldCheck, Square, UserRound, Users, Volume2, X } from 'lucide-react';
 import { contacts, seedRequests } from './data';
 import { interpret, type Tab } from './commands';
 import Landing from './Landing';
@@ -17,6 +17,7 @@ const stage:Record<VoiceState,{title:string,hint:string,label:string}>={
   thinking:{title:'Let me check that…',hint:'One moment please.',label:'Thinking'},
   speaking:{title:'Here’s what I found',hint:'Tap the button if you want me to stop.',label:'Stop speaking'},
 };
+const statusWord:Record<VoiceState,string>={idle:'Ready',listening:'Listening',thinking:'Checking',speaking:'Speaking'};
 const greeting=()=>{const h=new Date().getHours();return h<12?'Good morning':h<18?'Good afternoon':'Good evening'};
 const unpunctuated=(s:string)=>s.replace(/[.!?…]+\s*$/,'');
 const spokenList=(xs:string[])=>xs.length<2?xs.join(''):`${xs.slice(0,-1).join(', ')}, and ${xs[xs.length-1]}`;
@@ -64,7 +65,9 @@ export default function App(){
 
       {tab==='home'&&<>
         <section className="stage">
-          <img className="dashboard-wolfie" src="/assets/wolfie-guardian.png" alt="" aria-hidden="true"/>
+          <img className="dashboard-wolfie" src="/assets/wolfie-welcome.png" alt="" aria-hidden="true"/>
+          {/* Decorative twin of the stage title, which already announces state via aria-live. */}
+          <div className="voice-status" aria-hidden="true"><span/>{statusWord[voice]}<i/><i/><i/></div>
           <p className="eyebrow"><span className="pulse"/> You’re protected</p>
           <h1>{greeting()}, {profile.name}.</h1>
           <button className={`mic ${voice}`} onClick={listen} aria-label={stage[voice].label}>
@@ -79,8 +82,9 @@ export default function App(){
             {reply&&<div className="answered"><small>Grandma Mode</small><p>{reply}</p><button onClick={()=>say(reply,lastTone)}><Volume2/>Say it again</button></div>}
           </div>}
           <div className="suggestions">
-            <button onClick={()=>ask('What’s on my calendar?')}><Clock3/>“What’s on my calendar?”</button>
-            <button onClick={()=>ask('Is this message safe?')}><AlertTriangle/>“Is this message safe?”</button>
+            <button onClick={()=>ask('Is this message safe?')}><MessageCircle/>Check a message</button>
+            <button onClick={()=>ask('Explain a bill')}><FileText/>Explain a bill</button>
+            <button onClick={()=>ask(`Call ${trusted.name}`)}><Users/>Call {trusted.name}</button>
           </div>
         </section>
 
