@@ -12,11 +12,19 @@
 # in scripts/set-anthropic-key.mjs both need 8+ key characters to trip this.
 PATTERN='sk-ant-[A-Za-z0-9_-]{8,}|sk-[A-Za-z0-9]{24,}|(ghp|gho|ghu|ghs)_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|AKIA[0-9A-Z]{16}|AIza[0-9A-Za-z_-]{35}|xox[baprs]-[A-Za-z0-9-]{10,}|-----BEGIN [A-Z ]*PRIVATE KEY-----|VITE_[A-Z0-9_]*(KEY|SECRET|TOKEN|PASSWORD)[A-Z0-9_]*[[:space:]]*=[[:space:]]*[^[:space:]#]'
 
+# Firebase web config is public by design — the browser SDK cannot work without it,
+# and Google documents the apiKey as safe to ship. Access is controlled by Firestore
+# rules and API-key restrictions, not by hiding this value. Exempt those lines, or
+# the hook blocks a correct commit and teaches everyone to pass --no-verify.
+ALLOW='VITE_FIREBASE_[A-Z0-9_]*[[:space:]]*='
+
 hits=$(
   git diff --cached --name-only --diff-filter=ACM | while IFS= read -r file; do
     # Scan the staged blob, not the working tree, and skip binaries.
     git show ":$file" 2>/dev/null | grep -Iq . 2>/dev/null || continue
-    git show ":$file" 2>/dev/null | grep -nEI "$PATTERN" | cut -d: -f1 |
+    # grep -n keeps the line content, so the allowlist can drop a match by what is
+    # on the line before the number is extracted.
+    git show ":$file" 2>/dev/null | grep -nEI "$PATTERN" | grep -vE "$ALLOW" | cut -d: -f1 |
       while IFS= read -r line; do printf '    %s:%s\n' "$file" "$line"; done
   done
 )
