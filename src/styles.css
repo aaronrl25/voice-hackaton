@@ -430,3 +430,7 @@ img,svg{max-width:100%}
 @media(max-width:700px){.protection-strip{grid-template-columns:1fr}.protection-strip>div:nth-child(2),.protection-strip>div:nth-child(3){display:none}}
 @media(max-width:47.99rem){.shell .dashboard-wolfie{width:9rem;height:9rem;margin-block:-.6rem -.2rem}}
 @media(max-width:390px){.shell>header,.detail-shell>header,.onboard>header{width:calc(100% - 1rem);margin-top:.5rem}.shell .stage{margin-inline:.5rem}.protection-strip{padding:.7rem .5rem}.shell .dashboard-wolfie{width:7.5rem;height:7.5rem}}
+.auth-error{padding:.75rem .9rem;border:1px solid #b35a66;border-radius:.75rem;color:#ffd7da;background:#5a1e294d;font-size:.88rem}
+.auth-submit:disabled{cursor:wait;opacity:.7}
+.add-check{min-height:3.2rem;margin-top:1rem;padding:.6rem 1rem;border:1px solid #55dfe7;border-radius:.85rem;background:#19b7c61c;color:#77edf2;font-weight:700;display:flex;align-items:center;gap:.5rem}.add-check svg{width:1.2rem}
+.delete-record{align-self:center;margin-top:.8rem;padding:.65rem 1rem;border:0;background:transparent;color:#ffb2b5;font-weight:700;display:flex;align-items:center;gap:.5rem}.delete-record svg{width:1.15rem}
