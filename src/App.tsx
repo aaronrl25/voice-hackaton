@@ -14,6 +14,8 @@ const stage:Record<VoiceState,{title:string,hint:string,label:string}>={
   speaking:{title:'Here’s what I found',hint:'Tap the button if you want me to stop.',label:'Stop speaking'},
 };
 const greeting=()=>{const h=new Date().getHours();return h<12?'Good morning':h<18?'Good afternoon':'Good evening'};
+const unpunctuated=(s:string)=>s.replace(/[.!?…]+\s*$/,'');
+const spokenList=(xs:string[])=>xs.length<2?xs.join(''):`${xs.slice(0,-1).join(', ')}, and ${xs[xs.length-1]}`;
 
 export default function App(){
   const [items,setItems]=useState(seedRequests);
@@ -21,21 +23,21 @@ export default function App(){
   const [tab,setTab]=useState<Tab>('home');
   const [voice,setVoice]=useState<VoiceState>('idle');
   const [heard,setHeard]=useState(''); const [reply,setReply]=useState(''); const [notice,setNotice]=useState('');
-  const voiceOS=useRef(new VoiceOSAdapter());
+  const voiceRef=useRef<VoiceOSAdapter|null>(null); voiceRef.current??=new VoiceOSAdapter(); const voiceOS=voiceRef.current;
   const supported=useMemo(voiceSupported,[]);
   const item=items.find(x=>x.id===selected);
   const waiting=items.filter(x=>x.status==='awaiting_user'||x.status==='awaiting_trusted');
 
   function update(id:string, patch:Partial<RequestItem>){ setItems(xs=>xs.map(x=>x.id===id?{...x,...patch}:x)); }
-  function say(text:string){ setReply(text); voiceOS.current.speak(text,setVoice); }
+  function say(text:string){ setReply(text); voiceOS.speak(text,setVoice); }
   function answer(text:string){ setHeard(text); const out=interpret(text,items); if(out.tab) setTab(out.tab); if(out.open) setSelected(out.open); say(out.say); }
   function listen(){
-    if(voice==='listening'){ voiceOS.current.stop(); return; }
-    if(voice==='speaking'){ voiceOS.current.cancelSpeech(); setVoice('idle'); return; }
+    if(voice==='listening'){ voiceOS.stop(); return; }
+    if(voice==='speaking'){ voiceOS.cancelSpeech(); setVoice('idle'); return; }
     setHeard(''); setReply(''); setNotice('');
-    voiceOS.current.start({onState:setVoice,onInterim:setHeard,onTranscript:answer,onError:code=>{setVoice('idle');setNotice(voiceError(code))}});
+    voiceOS.start({onState:setVoice,onInterim:setHeard,onTranscript:answer,onError:code=>{setVoice('idle');setNotice(voiceError(code))}});
   }
-  function ask(text:string){ voiceOS.current.stop(); setNotice(''); answer(text); }
+  function ask(text:string){ voiceOS.stop(); setNotice(''); answer(text); }
   function approve(x:RequestItem){ if(x.risk==='medium'){update(x.id,{status:'completed',userApproved:true,receipt:'Confirmed by you · No sensitive information shared'});say('All done, safely. I saved a receipt for you.');} else {update(x.id,{status:'awaiting_trusted',userApproved:true});say('Your approval is saved. Maya still needs to say yes before anything can happen.');} }
   function trustedApprove(x:RequestItem){update(x.id,{status:'approved',trustedApproved:true,receipt:'Dual approval recorded · Action remains paused for manual verification'});say('Both approvals are recorded. Nothing was sent yet.');}
   function block(x:RequestItem){update(x.id,{status:'blocked',receipt:'Blocked by you · Sender not contacted'});setSelected(null);say('Blocked. Nothing was sent, and nobody was contacted.');}
@@ -122,7 +124,7 @@ function Section({items,select,all=false,seeAll}:{items:RequestItem[],select:(id
 
 function Detail({item,back,speak,approve,trustedApprove,dismiss}:{item:RequestItem,back:()=>void,speak:(t:string)=>void,approve:()=>void,trustedApprove:()=>void,dismiss:()=>void}){
   const rc=riskCopy[item.risk],Icon=rc.icon,high=item.risk==='high';
-  const aloud=()=>speak(`${rc.label}. The message from ${item.source} says: ${item.detail}. I flagged it because ${item.reasons.join(', and ')}.`);
+  const aloud=()=>speak(`${rc.label}. Here is the message from ${item.source}. ${unpunctuated(item.detail)}. I flagged it because: ${spokenList(item.reasons.map(r=>r.toLowerCase()))}.`);
   return <div className="detail-shell">
     <header><button className="back" onClick={back}><ArrowLeft/>Back</button><div className="brand"><div className="brandmark"><ShieldCheck/></div><div><b>Grandma Mode</b><span>Safety check</span></div></div></header>
     <main className="detail-main">

@@ -17,6 +17,18 @@ Design constraints for older users:
 - Errors never fail silently — an unheard phrase or a denied microphone explains the next step.
 - Honours `prefers-reduced-motion`, and every control has a visible focus ring.
 
+### The assistant's voice
+
+`src/speech.ts` chooses one consistent voice rather than accepting the platform default,
+which is frequently a robotic formant-synthesis voice. It ranks the installed English
+voices, favouring neural/premium ones and a list of known-warm names, and heavily
+penalising the novelty voices macOS ships (Zarvox, Trinoids, Bad News, and friends).
+On macOS this resolves to Samantha; on Edge to a Microsoft Natural voice.
+
+Replies are spoken one sentence per utterance at a slightly slowed rate. This produces
+natural pauses instead of a monotone run-on, and keeps every utterance well under the
+~15 second cutoff Chrome applies to a single utterance.
+
 Recognised phrases are matched in `src/commands.ts`: asking about your calendar, whether a
 message is safe, to see recent activity or trusted people, or to call a contact by name.
 Anything it does not understand results in **no action** and a spoken explanation.

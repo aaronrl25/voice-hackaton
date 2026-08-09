@@ -1,3 +1,5 @@
+import { pickVoice, sentences, speakable } from './speech';
+
 export type VoiceState = 'idle' | 'listening' | 'thinking' | 'speaking';
 
 type Recognition = {
@@ -29,7 +31,24 @@ export const voiceError = (code:string) => errors[code] ?? 'Something went wrong
 
 export class VoiceOSAdapter {
   private recognition?: Recognition;
+  private chosen?: SpeechSynthesisVoice;
+  private turn = 0;
   listening = false;
+
+  constructor(){
+    const synth = window.speechSynthesis;
+    if(!synth) return;
+    this.refreshVoice();
+    // getVoices() is empty until the engine has loaded its catalogue.
+    synth.addEventListener?.('voiceschanged', () => this.refreshVoice());
+  }
+
+  private refreshVoice(){
+    const voices = window.speechSynthesis?.getVoices() ?? [];
+    if(voices.length) this.chosen = pickVoice(voices);
+  }
+
+  get voiceName(){ return this.chosen?.name ?? 'system default'; }
 
   start(handlers:VoiceHandlers){
     const Ctor = ctor();
@@ -64,13 +83,21 @@ export class VoiceOSAdapter {
     const synth = window.speechSynthesis;
     if(!synth){ onState('idle'); return; }
     synth.cancel();
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.rate = .9; utterance.pitch = 1; utterance.volume = 1;
-    utterance.onstart = () => onState('speaking');
-    utterance.onend = () => onState('idle');
-    utterance.onerror = () => onState('idle');
-    synth.speak(utterance);
+    this.refreshVoice();
+    const chunks = sentences(speakable(text));
+    if(!chunks.length){ onState('idle'); return; }
+    const turn = ++this.turn;
+    const settle = (state:VoiceState) => { if(turn === this.turn) onState(state); };
+    onState('speaking');
+    chunks.forEach((chunk,index) => {
+      const utterance = new SpeechSynthesisUtterance(chunk);
+      if(this.chosen){ utterance.voice = this.chosen; utterance.lang = this.chosen.lang; }
+      utterance.rate = .94; utterance.pitch = 1.02; utterance.volume = 1;
+      if(index === chunks.length - 1) utterance.onend = () => settle('idle');
+      utterance.onerror = () => settle('idle');
+      synth.speak(utterance);
+    });
   }
 
-  cancelSpeech(){ window.speechSynthesis?.cancel(); }
+  cancelSpeech(){ this.turn++; window.speechSynthesis?.cancel(); }
 }
