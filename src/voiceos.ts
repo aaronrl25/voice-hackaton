@@ -1,47 +1,104 @@
-export type VoiceState = "idle" | "listening" | "thinking";
-type SpeechRecognitionCtor = new () => {
-  continuous: boolean;
-  interimResults: boolean;
-  lang: string;
-  start(): void;
-  stop(): void;
-  onresult: ((e: any) => void) | null;
-  onend: (() => void) | null;
-  onerror: (() => void) | null;
+import { pickVoice, sentences, shape, speakable, type Tone } from './speech';
+
+export type VoiceState = 'idle' | 'listening' | 'thinking' | 'speaking';
+
+type Recognition = {
+  continuous:boolean; interimResults:boolean; lang:string; maxAlternatives:number;
+  start():void; stop():void; abort():void;
+  onstart:(()=>void)|null; onresult:((e:any)=>void)|null; onend:(()=>void)|null; onerror:((e:any)=>void)|null;
+};
+type RecognitionCtor = new () => Recognition;
+
+export type VoiceHandlers = {
+  onState:(state:VoiceState)=>void;
+  onInterim:(text:string)=>void;
+  onTranscript:(text:string)=>void;
+  onError:(code:string)=>void;
 };
 
+const ctor = ():RecognitionCtor|undefined => (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+export const voiceSupported = () => !!ctor();
+
+const errors:Record<string,string> = {
+  unsupported:'This browser cannot listen yet. You can still tap the large buttons — everything works by tapping.',
+  'not-allowed':'I need your permission to use the microphone. Allow it, then tap the big button again.',
+  'service-not-allowed':'I need your permission to use the microphone. Allow it, then tap the big button again.',
+  'no-speech':'I did not hear anything. Tap the big button and speak when it turns red.',
+  'audio-capture':'I cannot find a microphone on this device.',
+  network:'I could not reach the listening service. Please check your internet, then try again.',
+};
+export const voiceError = (code:string) => errors[code] ?? 'Something went wrong, so I did nothing. Tap the big button to try again.';
+
 export class VoiceOSAdapter {
-  private recognition?: InstanceType<SpeechRecognitionCtor>;
-  start(
-    onTranscript: (text: string) => void,
-    onState: (state: VoiceState) => void,
-  ) {
-    const Ctor =
-      (window as any).SpeechRecognition ||
-      ((window as any).webkitSpeechRecognition as
-        SpeechRecognitionCtor | undefined);
-    if (!Ctor) return false;
-    const recognition = new Ctor();
-    this.recognition = recognition;
-    recognition.continuous = false;
-    recognition.interimResults = true;
-    recognition.lang = "en-US";
-    recognition.onresult = (event: any) => {
-      const text = Array.from(event.results)
-        .map((r: any) => r[0].transcript)
-        .join("");
-      if (event.results[event.results.length - 1].isFinal) onTranscript(text);
+  private recognition?: Recognition;
+  private chosen?: SpeechSynthesisVoice;
+  private turn = 0;
+  listening = false;
+
+  constructor(){
+    const synth = window.speechSynthesis;
+    if(!synth) return;
+    this.refreshVoice();
+    // getVoices() is empty until the engine has loaded its catalogue.
+    synth.addEventListener?.('voiceschanged', () => this.refreshVoice());
+  }
+
+  private refreshVoice(){
+    const voices = window.speechSynthesis?.getVoices() ?? [];
+    if(voices.length) this.chosen = pickVoice(voices);
+  }
+
+  get voiceName(){ return this.chosen?.name ?? 'system default'; }
+
+  start(handlers:VoiceHandlers){
+    const Ctor = ctor();
+    if(!Ctor){ handlers.onError('unsupported'); return false; }
+    if(this.listening) return true;
+    this.cancelSpeech();
+    const r = new Ctor(); this.recognition = r;
+    r.continuous = false; r.interimResults = true; r.lang = 'en-US'; r.maxAlternatives = 1;
+    let final = '';
+    r.onstart = () => { this.listening = true; handlers.onState('listening'); };
+    r.onresult = (event:any) => {
+      let interim = '';
+      for(let i = event.resultIndex; i < event.results.length; i++){
+        const result = event.results[i];
+        if(result.isFinal) final += result[0].transcript; else interim += result[0].transcript;
+      }
+      handlers.onInterim((final + interim).trim());
     };
-    recognition.onend = () => onState("idle");
-    recognition.onerror = () => onState("idle");
-    onState("listening");
-    recognition.start();
+    r.onerror = (event:any) => { this.listening = false; handlers.onError(event?.error ?? 'error'); };
+    r.onend = () => {
+      this.listening = false;
+      const text = final.trim();
+      if(text){ handlers.onState('thinking'); handlers.onTranscript(text); } else handlers.onState('idle');
+    };
+    try { r.start(); } catch { this.listening = false; handlers.onState('idle'); return false; }
     return true;
   }
-  stop() {
-    this.recognition?.stop();
+
+  stop(){ try { this.recognition?.stop(); } catch { /* already stopped */ } }
+
+  speak(text:string, onState:(state:VoiceState)=>void, tone:Tone = 'neutral'){
+    const synth = window.speechSynthesis;
+    if(!synth){ onState('idle'); return; }
+    synth.cancel();
+    this.refreshVoice();
+    const chunks = sentences(speakable(text));
+    if(!chunks.length){ onState('idle'); return; }
+    const turn = ++this.turn;
+    const settle = (state:VoiceState) => { if(turn === this.turn) onState(state); };
+    onState('speaking');
+    chunks.forEach((chunk,index) => {
+      const utterance = new SpeechSynthesisUtterance(chunk);
+      if(this.chosen){ utterance.voice = this.chosen; utterance.lang = this.chosen.lang; }
+      const { rate, pitch } = shape(chunk, index, tone);
+      utterance.rate = rate; utterance.pitch = pitch; utterance.volume = 1;
+      if(index === chunks.length - 1) utterance.onend = () => settle('idle');
+      utterance.onerror = () => settle('idle');
+      synth.speak(utterance);
+    });
   }
-  speak(text: string) {
-    window.speechSynthesis?.speak(new SpeechSynthesisUtterance(text));
-  }
+
+  cancelSpeech(){ this.turn++; window.speechSynthesis?.cancel(); }
 }

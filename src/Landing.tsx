@@ -1,16 +1,15 @@
 import { useState, type FormEvent } from "react";
-import { ArrowRight, Check, Eye, EyeOff, LockKeyhole, Mic, Play, ShieldCheck, Sparkles, Users } from "lucide-react";
+import { ArrowRight, Eye, EyeOff, LockKeyhole, Mic, Play, ShieldCheck, Sparkles, Users } from "lucide-react";
+import { startSession } from "./profile";
 
 export default function Landing({ onEnter }: { onEnter: () => void }) {
   const [view, setView] = useState<"landing" | "login" | "setup">("landing");
-  const [step, setStep] = useState(1);
   const [showPassword, setShowPassword] = useState(false);
-  const [name, setName] = useState("");
   function finish(event: FormEvent) {
     event.preventDefault();
-    if (view === "setup" && step === 1) return setStep(2);
-    localStorage.setItem("grandma-mode-session", "active");
-    if (name) localStorage.setItem("grandma-mode-profile", JSON.stringify({ name }));
+    // Account only. The name and the trusted contact are collected by the spoken
+    // onboarding that runs straight after this, so nobody is asked for them twice.
+    startSession();
     onEnter();
   }
   if (view !== "landing") return <div className="auth-page">
@@ -18,7 +17,7 @@ export default function Landing({ onEnter }: { onEnter: () => void }) {
     <div className="auth-layout"><section className="auth-story"><div className="wolfie-badge"><ShieldCheck/><i/></div><p className="landing-kicker">Wolfie is on guard</p><h1>Stay connected.<br/>Stay in control.</h1><p>Wolfie checks suspicious requests, explains what’s happening, and makes sure nothing important happens without your say-so.</p><div className="auth-promise"><LockKeyhole/><span><b>Your information stays yours.</b><small>Protected and never sold.</small></span></div></section>
     <section className="auth-panel"><form onSubmit={finish}>
       {view === "login" ? <><p className="landing-kicker">Welcome back</p><h2>Sign in to Grandma Mode</h2><p className="form-intro">Your protected space is ready.</p><label>Email address<input required type="email" placeholder="you@example.com"/></label><label>Password<Password show={showPassword} toggle={()=>setShowPassword(x=>!x)}/></label><button className="auth-submit">Sign in safely <ArrowRight/></button><button type="button" className="forgot">I forgot my password</button><div className="form-switch">New here? <button type="button" onClick={()=>setView("setup")}>Set up protection</button></div></>
-      : <><div className="step-row"><span>Step {step} of 2</span><i><b style={{width:`${step*50}%`}}/></i></div><p className="landing-kicker">{step===1?"Let’s get started":"Your safety circle"}</p><h2>{step===1?"Create your safe space":"Add someone you trust"}</h2><p className="form-intro">{step===1?"A few details, then Wolfie can start helping.":"They’ll only be asked to help with high-risk actions."}</p>{step===1?<><label>What should we call you?<input required value={name} onChange={e=>setName(e.target.value)} placeholder="Your first name"/></label><label>Email address<input required type="email" placeholder="you@example.com"/></label><label>Create a password<Password show={showPassword} toggle={()=>setShowPassword(x=>!x)}/></label></>:<><label>Trusted person’s name<input required placeholder="For example, Maya"/></label><label>Their phone number<input required type="tel" placeholder="(555) 555-0123"/></label><div className="trusted-explain"><Users/><span><b>Why do I need this?</b><small>Dangerous actions require approval from both of you.</small></span></div></>}<button className="auth-submit">{step===1?"Continue":"Finish setup"} <ArrowRight/></button>{step===2&&<button type="button" className="forgot" onClick={()=>setStep(1)}>Go back</button>}<div className="form-switch">Already protected? <button type="button" onClick={()=>setView("login")}>Sign in</button></div></>}
+      : <><p className="landing-kicker">Let’s get started</p><h2>Create your safe space</h2><p className="form-intro">Just an email and a password. Wolfie asks you the rest out loud in a moment — no more forms.</p><label>Email address<input required type="email" placeholder="you@example.com"/></label><label>Create a password<Password show={showPassword} toggle={()=>setShowPassword(x=>!x)}/></label><button className="auth-submit">Create my safe space <ArrowRight/></button><div className="form-switch">Already protected? <button type="button" onClick={()=>setView("login")}>Sign in</button></div></>}
     </form></section></div></div>;
 
   return <div className="landing"><header className="landing-nav"><div className="brand"><div className="brandmark"><ShieldCheck/></div><div><b>Grandma Mode</b><span>Powered by Wolfie</span></div></div><div className="landing-links"><a href="#how">How it works</a><a href="#safety">Safety</a></div><div className="nav-actions"><button className="text-button" onClick={()=>setView("login")}>Sign in</button><button className="nav-cta" onClick={()=>setView("setup")}>Get protected</button></div></header>
