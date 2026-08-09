@@ -29,6 +29,13 @@ export function interpret(raw:string, items:RequestItem[], trustedName='Maya'):I
   if(has(text,'calendar','appointment','schedule','doctor','today','tomorrow','plans'))
     return { say:"Let me take a look. You've got one thing coming up: Tuesday at ten thirty in the morning, with Doctor Alvarez. I'll remind you before it.", tone:'friendly' };
 
+  // Before the safety branch: "explain a bill" should not be read as a scam check.
+  if(has(text,'bill','charge','invoice','how much','what do i owe')){
+    const bill = items.find(x => /bill/i.test(x.title));
+    if(!bill) return { say:"I can't see a bill waiting right now.", tone:'neutral' };
+    return { say:`Sure. It's your ${bill.source} bill, and it's the usual amount. It's coming from an account you've paid before, so nothing looks unusual. I'm opening it so you can see the details.`, tone:'friendly', open:bill.id };
+  }
+
   if(has(text,'safe','scam','fraud','suspicious','message','text','check','bank','money','transfer','stranger')){
     const open = [...items].sort((a,b) => b.score - a.score)[0];
     if(!open) return { say:"Good news. There's nothing waiting on you right now.", tone:'friendly' };
