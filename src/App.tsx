@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { AlertTriangle, ArrowLeft, Check, CheckCircle2, ChevronRight, Clock3, FileText, Headphones, HelpCircle, Home, Info, LockKeyhole, MessageCircle, Mic, Phone, ShieldCheck, Square, UserRound, Users, Volume2, X } from 'lucide-react';
+import { AlertTriangle, ArrowLeft, Check, CheckCircle2, ChevronRight, Clock3, FileText, Headphones, HelpCircle, Home, Info, LockKeyhole, MessageCircle, Mic, Phone, Plus, ShieldCheck, Square, Trash2, UserRound, Users, Volume2, X } from 'lucide-react';
 import { contacts, seedRequests } from './data';
 import { analyzeMessage, liveAnalysis } from './analysis';
 import { interpret, type Tab } from './commands';
@@ -9,6 +9,8 @@ import { blankProfile, loadProfile, saveProfile, type Profile } from './profile'
 import type { Tone } from './speech';
 import { VoiceOSAdapter, voiceError, voiceSupported, type VoiceState } from './voiceos';
 import type { RequestItem, Risk } from './types';
+import { createRequest, deleteRequest, readProfile, seedRequestsIfEmpty, updateRequest, watchRequests, writeProfile } from './firebaseData';
+import { firebaseReady } from './firebase';
 import wolfieScanning from './assets/wolfie-scanning-removebg-preview.png';
 import wolfieWelcome from './assets/wolfie-welcome-removebg-preview.png';
 import wolfieWelcomeSecond from './assets/wolfie-welcome-removebg-preview (1).png';
@@ -39,6 +41,7 @@ export default function App(){
   // Always begin with the public story. A saved profile is used only after the
   // person deliberately signs in; it should never make the landing page vanish.
   const [authed,setAuthed]=useState(false);
+  const [uid,setUid]=useState('');
   const [profile,setProfile]=useState(loadProfile);
   const trusted=contacts.find(c=>c.id===profile.trustedId)??contacts[0];
   const item=items.find(x=>x.id===selected);
@@ -50,7 +53,28 @@ export default function App(){
     return ()=>window.clearInterval(timer);
   },[voice]);
 
-  function update(id:string, patch:Partial<RequestItem>){ setItems(xs=>xs.map(x=>x.id===id?{...x,...patch}:x)); }
+  useEffect(()=>{
+    if(!uid||!firebaseReady)return;
+    let active=true;
+    void seedRequestsIfEmpty(uid,seedRequests).catch(error=>setNotice(error.message));
+    const stop=watchRequests(uid,next=>{if(active)setItems(next)},error=>setNotice(error.message));
+    return ()=>{active=false;stop()};
+  },[uid]);
+
+  function update(id:string, patch:Partial<RequestItem>){
+    setItems(xs=>xs.map(x=>x.id===id?{...x,...patch}:x));
+    if(uid&&firebaseReady)void updateRequest(uid,id,patch).catch(error=>setNotice(error.message));
+  }
+  function addDemoCheck(){
+    const item:RequestItem={id:crypto.randomUUID(),title:'New message to review',detail:'Please review this new request before taking action.',source:'New sender',createdAt:Date.now(),risk:'medium',score:50,reasons:['New sender','Action needs confirmation'],status:'awaiting_user'};
+    if(uid&&firebaseReady)void createRequest(uid,item).catch(error=>setNotice(error.message));
+    else setItems(items=>[item,...items]);
+  }
+  function remove(id:string){
+    setSelected(null);
+    if(uid&&firebaseReady)void deleteRequest(uid,id).catch(error=>setNotice(error.message));
+    else setItems(items=>items.filter(item=>item.id!==id));
+  }
   function say(text:string, tone:Tone='neutral'){ setReply(text); setLastTone(tone); voiceOS.speak(text,setVoice,tone); }
   // The seeded verdict shows immediately; Claude's replaces it when it lands, so the
   // person is never left staring at a spinner during a safety check.
@@ -74,15 +98,20 @@ export default function App(){
   function trustedApprove(x:RequestItem){update(x.id,{status:'approved',trustedApproved:true,receipt:'Dual approval recorded · Action remains paused for manual verification'});say("Alright, both approvals are in. Nothing has been sent yet.",'reassuring');}
   function block(x:RequestItem){update(x.id,{status:'blocked',receipt:'Blocked by you · Sender not contacted'});setSelected(null);say("Blocked. Nothing went out, and nobody got contacted.",'reassuring');}
 
-  if(!authed) return <Landing onEnter={(isNewAccount)=>{
+  if(!authed) return <Landing onEnter={async(isNewAccount,userId)=>{
+    setUid(userId);
     if(isNewAccount){
       saveProfile(blankProfile);
       setProfile(blankProfile);
+      if(firebaseReady)await writeProfile(userId,blankProfile);
+    } else {
+      const remote=firebaseReady?await readProfile(userId):loadProfile();
+      if(remote){saveProfile(remote);setProfile(remote);}
     }
     setAuthed(true);
   }}/>;
-  if(!profile.onboarded) return <Onboarding voiceOS={voiceOS} onDone={(p:Profile)=>{saveProfile(p);setProfile(p);say(`You're all set, ${p.name}. Any time you need me, just tap the big button and talk.`,'friendly');}}/>;
-  if(item) return <Detail item={item} trusted={trusted.name} back={()=>setSelected(null)} speak={say} approve={()=>approve(item)} trustedApprove={()=>trustedApprove(item)} dismiss={()=>block(item)}/>;
+  if(!profile.onboarded) return <Onboarding voiceOS={voiceOS} onDone={(p:Profile)=>{saveProfile(p);setProfile(p);if(uid&&firebaseReady)void writeProfile(uid,p);say(`You're all set, ${p.name}. Any time you need me, just tap the big button and talk.`,'friendly');}}/>;
+  if(item) return <Detail item={item} trusted={trusted.name} back={()=>setSelected(null)} speak={say} approve={()=>approve(item)} trustedApprove={()=>trustedApprove(item)} dismiss={()=>block(item)} remove={()=>remove(item.id)}/>;
 
   return <div className="shell">
     <header>
@@ -135,7 +164,7 @@ export default function App(){
       </>}
 
       {tab==='activity'&&<div className="stack">
-        <div className="page-title"><p className="eyebrow">Your safety record</p><h1>Recent activity</h1><p>Every check and approval is saved here.</p></div>
+        <div className="page-title"><p className="eyebrow">Your safety record</p><h1>Recent activity</h1><p>Every check and approval is saved here.</p><button className="add-check" onClick={addDemoCheck}><Plus/>Add demo safety check</button></div>
         <Section items={items} select={setSelected} all/>
       </div>}
 
@@ -146,7 +175,7 @@ export default function App(){
           <div className="contact-copy"><h3>{c.name}</h3><p>{c.relationship}</p><small>{c.phone}</small>
             {c.id===profile.trustedId
               ?<em className="trusted-badge"><Check/>Your trusted person</em>
-              :<button className="trusted-choose" onClick={()=>{const next={...profile,trustedId:c.id};saveProfile(next);setProfile(next);say(`Okay. From now on I'll check with ${c.name}.`,'reassuring');}}>Make {c.name} my trusted person</button>}
+              :<button className="trusted-choose" onClick={()=>{const next={...profile,trustedId:c.id};saveProfile(next);setProfile(next);if(uid&&firebaseReady)void writeProfile(uid,next);say(`Okay. From now on I'll check with ${c.name}.`,'reassuring');}}>Make {c.name} my trusted person</button>}
           </div>
           <button aria-label={`Call ${c.name}`}><Phone/></button>
         </article>)}</div>
@@ -175,7 +204,7 @@ function Section({items,select,all=false,seeAll}:{items:RequestItem[],select:(id
   </section>
 }
 
-function Detail({item,trusted,back,speak,approve,trustedApprove,dismiss}:{item:RequestItem,trusted:string,back:()=>void,speak:(t:string,tone?:Tone)=>void,approve:()=>void,trustedApprove:()=>void,dismiss:()=>void}){
+function Detail({item,trusted,back,speak,approve,trustedApprove,dismiss,remove}:{item:RequestItem,trusted:string,back:()=>void,speak:(t:string,tone?:Tone)=>void,approve:()=>void,trustedApprove:()=>void,dismiss:()=>void,remove:()=>void}){
   const rc=riskCopy[item.risk],Icon=rc.icon,high=item.risk==='high';
   const tone:Tone=high?'warning':item.risk==='low'?'friendly':'neutral';
   const aloud=()=>speak(`${rc.label}. Here's the message from ${item.source}. ${unpunctuated(item.detail)}. I flagged it because: ${spokenList(item.reasons.map(r=>r.toLowerCase()))}.`,tone);
@@ -201,6 +230,7 @@ function Detail({item,trusted,back,speak,approve,trustedApprove,dismiss}:{item:R
         <button className="secondary" onClick={dismiss}><X/>No, block this</button>
       </div>
       <p className="reassure"><Headphones/>Not sure? Tap “Read this to me”, or call {trusted}.</p>
+      <button className="delete-record" onClick={remove}><Trash2/>Delete this record</button>
     </main>
   </div>
 }
