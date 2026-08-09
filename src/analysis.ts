@@ -14,6 +14,7 @@ if(leaked.length) throw new Error(
 );
 
 export type Verdict = { risk:Risk, score:number, reasons:string[], spokenVerdict:string, source:'model'|'heuristic' };
+export type ClaudeAnswer = { text:string, tone:'friendly'|'neutral'|'reassuring'|'warning', source:'model'|'fallback' };
 
 const convexUrl = import.meta.env.VITE_CONVEX_URL as string | undefined;
 export const liveAnalysis = Boolean(convexUrl);
@@ -21,6 +22,7 @@ export const liveAnalysis = Boolean(convexUrl);
 // Referenced by name rather than through convex/_generated/api, which is gitignored
 // and absent until `npx convex dev` runs — importing it would break the app build.
 const checkMessage = makeFunctionReference<'action', { text:string, sender?:string }, Verdict>('grandma:checkMessage');
+const askWolfie = makeFunctionReference<'action', { question:string, trustedName?:string }, ClaudeAnswer>('grandma:askWolfie');
 
 let client:ConvexHttpClient | undefined;
 
@@ -29,4 +31,11 @@ export async function analyzeMessage(text:string, sender?:string):Promise<Verdic
   client ??= new ConvexHttpClient(convexUrl);
   try { return await client.action(checkMessage, { text, sender }); }
   catch { return null; } // The seeded verdict stays on screen; never leave the user with nothing.
+}
+
+export async function askClaude(question:string,trustedName?:string):Promise<ClaudeAnswer|null>{
+  if(!convexUrl)return null;
+  client??=new ConvexHttpClient(convexUrl);
+  try{return await client.action(askWolfie,{question,trustedName});}
+  catch{return null;}
 }

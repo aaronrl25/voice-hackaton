@@ -3,7 +3,7 @@ import type { Tone } from './speech';
 import type { RequestItem } from './types';
 
 export type Tab = 'home' | 'activity' | 'people';
-export type Interpretation = { say:string; tone:Tone; tab?:Tab; open?:string };
+export type Interpretation = { say:string; tone:Tone; tab?:Tab; open?:string; handled?:boolean };
 
 const has = (text:string, ...words:string[]) => words.some(w => text.includes(w));
 
@@ -16,7 +16,7 @@ const verdict:Record<string,{ line:string, tone:Tone }> = {
   high:   { line:"This one's bad. Please don't reply to it, and don't send anybody money.", tone:'warning' },
 };
 
-export function interpret(raw:string, items:RequestItem[], trustedName='Maya'):Interpretation {
+export function interpret(raw:string, items:RequestItem[], trustedName='Aaron'):Interpretation {
   const text = raw.toLowerCase();
   const contact = contacts.find(c => text.includes(c.name.toLowerCase()));
 
@@ -49,5 +49,5 @@ export function interpret(raw:string, items:RequestItem[], trustedName='Maya'):I
   if(has(text,'family','contact','trusted','people','who can'))
     return { say:"These are your people. They're the ones who help you approve anything risky.", tone:'reassuring' , tab:'people' };
 
-  return { say:`Sorry, I didn't quite catch that, so I haven't done anything at all. You can ask me about your calendar, whether a message is safe, or tell me to call ${trustedName}.`, tone:'neutral' };
+  return { say:`Sorry, I didn't quite catch that, so I haven't done anything at all. You can ask me about your calendar, whether a message is safe, or tell me to call ${trustedName}.`, tone:'neutral', handled:false };
 }

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { AlertTriangle, ArrowLeft, Check, CheckCircle2, ChevronRight, Clock3, FileText, Headphones, HelpCircle, Home, Info, LockKeyhole, MessageCircle, Mic, Phone, Plus, ShieldCheck, Square, Trash2, UserRound, Users, Volume2, X } from 'lucide-react';
 import { contacts, seedRequests } from './data';
-import { analyzeMessage, liveAnalysis } from './analysis';
+import { analyzeMessage, askClaude, liveAnalysis } from './analysis';
 import { interpret, type Tab } from './commands';
 import Landing from './Landing';
 import Onboarding from './Onboarding';
@@ -11,6 +11,7 @@ import { VoiceOSAdapter, voiceError, voiceSupported, type VoiceState } from './v
 import type { RequestItem, Risk } from './types';
 import { createRequest, deleteRequest, readProfile, seedRequestsIfEmpty, updateRequest, watchRequests, writeProfile } from './firebaseData';
 import { firebaseReady } from './firebase';
+import { requestCall } from './calling';
 import wolfieScanning from './assets/wolfie-scanning-removebg-preview.png';
 import wolfieWelcome from './assets/wolfie-welcome-removebg-preview.png';
 import wolfieWelcomeSecond from './assets/wolfie-welcome-removebg-preview (1).png';
@@ -36,6 +37,7 @@ export default function App(){
   const [heard,setHeard]=useState(''); const [reply,setReply]=useState(''); const [notice,setNotice]=useState('');
   const [lastTone,setLastTone]=useState<Tone>('neutral');
   const [wolfiePose,setWolfiePose]=useState(0);
+  const [calling,setCalling]=useState(false);
   const voiceRef=useRef<VoiceOSAdapter|null>(null); voiceRef.current??=new VoiceOSAdapter(); const voiceOS=voiceRef.current;
   const supported=useMemo(voiceSupported,[]);
   // Always begin with the public story. A saved profile is used only after the
@@ -76,27 +78,47 @@ export default function App(){
     else setItems(items=>items.filter(item=>item.id!==id));
   }
   function say(text:string, tone:Tone='neutral'){ setReply(text); setLastTone(tone); voiceOS.speak(text,setVoice,tone); }
-  // The seeded verdict shows immediately; Claude's replaces it when it lands, so the
-  // person is never left staring at a spinner during a safety check.
-  function reanalyze(x:RequestItem){
-    if(!liveAnalysis) return;
-    void analyzeMessage(x.detail,x.source).then(verdict=>{
-      if(!verdict||verdict.source!=='model') return;
-      update(x.id,{risk:verdict.risk,score:verdict.score,reasons:verdict.reasons});
-      if(verdict.spokenVerdict) say(verdict.spokenVerdict,verdict.risk==='high'?'warning':verdict.risk==='low'?'friendly':'neutral');
-    });
+  async function answer(text:string){
+    setHeard(text);
+    if(/\b(call me|call my phone|ring me)\b/i.test(text)){await callMe();return;}
+    const out=interpret(text,items,trusted.name);
+    if(out.tab)setTab(out.tab);
+    if(out.open)setSelected(out.open);
+    if(liveAnalysis){
+      setVoice('thinking');
+      const opened=out.open?items.find(x=>x.id===out.open):undefined;
+      const safetyQuestion=/\b(safe|scam|fraud|suspicious|message|text|bank|money|transfer)\b/i.test(text);
+      if(opened&&safetyQuestion){
+        const verdict=await analyzeMessage(opened.detail,opened.source);
+        if(verdict?.source==='model'){
+          update(opened.id,{risk:verdict.risk,score:verdict.score,reasons:verdict.reasons});
+          say(verdict.spokenVerdict||`I checked it with Claude. The risk score is ${verdict.score} out of 100.`,verdict.risk==='high'?'warning':verdict.risk==='low'?'friendly':'neutral');
+          return;
+        }
+      }
+      const context=opened?`\n\nApp context: The user is viewing a saved item titled "${opened.title}" from "${opened.source}". Its content is: "${opened.detail}".`:'';
+      const live=await askClaude(`${text}${context}`,trusted.name);
+      if(live?.source==='model'){say(live.text,live.tone);return;}
+    }
+    say(out.say,out.tone);
   }
-  function answer(text:string){ setHeard(text); const out=interpret(text,items,trusted.name); if(out.tab) setTab(out.tab); if(out.open){ setSelected(out.open); const opened=items.find(x=>x.id===out.open); if(opened) reanalyze(opened); } say(out.say,out.tone); }
   function listen(){
     if(voice==='listening'){ voiceOS.stop(); return; }
     if(voice==='speaking'){ voiceOS.cancelSpeech(); setVoice('idle'); return; }
     setHeard(''); setReply(''); setNotice('');
     voiceOS.start({onState:setVoice,onInterim:setHeard,onTranscript:answer,onError:code=>{setVoice('idle');setNotice(voiceError(code))}});
   }
-  function ask(text:string){ voiceOS.stop(); setNotice(''); answer(text); }
+  function ask(text:string){ voiceOS.stop(); setNotice(''); void answer(text); }
   function approve(x:RequestItem){ if(x.risk==='medium'){update(x.id,{status:'completed',userApproved:true,receipt:'Confirmed by you · No sensitive information shared'});say("Nice, that's all done. I saved you a receipt.",'friendly');} else {update(x.id,{status:'awaiting_trusted',userApproved:true});say(`Got it, your approval is in. ${trusted.name} still needs to say yes before anything happens.`,'reassuring');} }
   function trustedApprove(x:RequestItem){update(x.id,{status:'approved',trustedApproved:true,receipt:'Dual approval recorded · Action remains paused for manual verification'});say("Alright, both approvals are in. Nothing has been sent yet.",'reassuring');}
   function block(x:RequestItem){update(x.id,{status:'blocked',receipt:'Blocked by you · Sender not contacted'});setSelected(null);say("Blocked. Nothing went out, and nobody got contacted.",'reassuring');}
+  async function callMe(){
+    if(!window.confirm('Start a real interactive AI phone conversation now? You can ask questions during the call. This costs up to $0.60 through Zero.'))return;
+    setCalling(true);setNotice('Starting your call…');
+    try{const result=await requestCall();setNotice(`${result.message} Your phone should ring shortly.`);say('Your call is on the way. Your phone should ring shortly.','friendly');}
+    catch(error){setNotice(error instanceof Error?error.message:'The call could not be started.');}
+    finally{setCalling(false);}
+  }
 
   if(!authed) return <Landing onEnter={async(isNewAccount,userId)=>{
     setUid(userId);
@@ -116,7 +138,7 @@ export default function App(){
   return <div className="shell">
     <header>
       <div className="brand"><div className="brandmark"><ShieldCheck/></div><div><b>Grandma Mode</b><span>Safe help, every step</span></div></div>
-      <button className="help"><Phone/><span>Call {trusted.name}</span></button>
+      <button className="help" onClick={callMe} disabled={calling}><Phone/><span>{calling?'Calling…':'Call me now'}</span></button>
     </header>
     <main>
       {notice&&<div className="notice" role="status"><Info/><p>{notice}</p><button aria-label="Dismiss message" onClick={()=>setNotice('')}><X/></button></div>}

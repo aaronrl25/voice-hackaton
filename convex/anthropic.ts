@@ -10,6 +10,9 @@ import { internalAction } from './_generated/server';
 // Vite inlines into the public browser bundle.
 
 export type Verdict = { risk:'low'|'medium'|'high', score:number, reasons:string[], spokenVerdict:string };
+export type AssistantAnswer = { text:string, tone:'friendly'|'neutral'|'reassuring'|'warning' };
+
+const MODEL = 'claude-sonnet-5';
 
 const verdictSchema = {
   type:'object',
@@ -53,8 +56,8 @@ export const checkMessage = internalAction({
 
     const client = new Anthropic({ apiKey });
     const body = {
-      model:'claude-opus-5',
-      max_tokens:8000,
+      model:MODEL,
+      max_tokens:800,
       system,
       output_config:{ effort:'medium', format:{ type:'json_schema', schema:verdictSchema } },
       messages:[{ role:'user', content:`<message>\nFrom: ${sender ?? 'unknown sender'}\n\n${text}\n</message>` }],
@@ -89,5 +92,34 @@ export const checkMessage = internalAction({
       reasons: Array.isArray(parsed.reasons) ? parsed.reasons.filter(r => typeof r === 'string').slice(0, 6) : [],
       spokenVerdict: typeof parsed.spokenVerdict === 'string' ? parsed.spokenVerdict : '',
     };
+  },
+});
+
+const assistantSystem = `You are Wolfie, the voice assistant inside Grandma Mode. Your user may be an older adult.
+
+Answer the user's question directly in warm, everyday language. Keep the response short enough to say aloud: usually two or three sentences. Never claim you completed a real-world action, placed a call, made a payment, accessed a calendar, or contacted someone unless the application explicitly says it did. For financial, medical, legal, or account-security questions, give cautious general information and recommend confirming through a trusted official source. If a message sounds like a scam, clearly tell the person not to reply, click, pay, or share codes.
+
+Return only valid JSON with this shape:
+{"text":"your spoken answer","tone":"friendly|neutral|reassuring|warning"}`;
+
+export const answerQuestion = internalAction({
+  args:{ question:v.string(), trustedName:v.optional(v.string()) },
+  handler:async(_ctx,{question,trustedName}):Promise<AssistantAnswer|null>=>{
+    const apiKey=process.env.ANTHROPIC_API_KEY;
+    if(!apiKey)return null;
+    const client=new Anthropic({apiKey});
+    const response=await client.messages.create({
+      model:MODEL,
+      max_tokens:350,
+      system:assistantSystem,
+      messages:[{role:'user',content:`The user's trusted contact is ${trustedName??'not set'}.\n\n<question>\n${question}\n</question>`}],
+    });
+    const block=response.content.find(part=>part.type==='text');
+    if(!block||block.type!=='text')return null;
+    const raw=block.text.trim().replace(/^```json\s*/i,'').replace(/\s*```$/,'');
+    const parsed=JSON.parse(raw) as Partial<AssistantAnswer>;
+    if(typeof parsed.text!=='string'||!parsed.text.trim())return null;
+    const tone=parsed.tone==='friendly'||parsed.tone==='reassuring'||parsed.tone==='warning'?parsed.tone:'neutral';
+    return {text:parsed.text.trim(),tone};
   },
 });

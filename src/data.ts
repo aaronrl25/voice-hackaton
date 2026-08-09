@@ -2,10 +2,10 @@ import type { Contact, RequestItem } from "./types";
 export const contacts: Contact[] = [
   {
     id: "c1",
-    name: "Maya",
-    relationship: "Granddaughter",
-    phone: "(415) 555-0142",
-    initials: "M",
+    name: "Aaron",
+    relationship: "Primary contact",
+    phone: "(773) 708-2882",
+    initials: "A",
     available: true,
   },
   {

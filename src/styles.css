@@ -392,7 +392,7 @@ img,svg{max-width:100%}
 .status-orb{width:2.35rem;height:2.35rem;flex:none;border:1px solid #46dfe8;border-radius:.75rem;display:grid;place-items:center;color:#65eef2;background:#19b7c618;box-shadow:0 0 1rem #19b7c629}.status-orb svg{width:1.2rem}
 
 .shell .stage{margin:0 1.1rem;border:1px solid #315e86;border-radius:1.5rem;background:radial-gradient(circle at 50% 18%,#0b4b79,#061a35 65%,#031126);box-shadow:0 1rem 3rem #0008,inset 0 0 3rem #19b7c612}
-.shell .dashboard-wolfie{position:relative;left:auto;right:auto;bottom:auto;width:12rem;height:12rem;margin:-1rem auto -.5rem;opacity:1;transform:none;object-fit:contain;object-position:center;border:0;border-radius:0;filter:drop-shadow(0 0 1.5rem #27dce866)}
+.shell .dashboard-wolfie{position:relative;left:auto;right:auto;bottom:auto;width:12rem;height:12rem;margin:-1rem auto -.5rem;opacity:1;transform:none;object-fit:contain;object-position:center;border:0;border-radius:0;clip-path:none;background:transparent;box-shadow:none;filter:drop-shadow(0 .7rem 1.2rem #020b1d99)}
 .shell .dashboard-wolfie.pose-0{animation:wolfieScanCentered 1.3s ease-in-out infinite}
 .shell .dashboard-wolfie.pose-1{transform:translateY(-3px) rotate(-1deg)}
 .shell .dashboard-wolfie.pose-2{transform:translateY(1px) rotate(1deg)}

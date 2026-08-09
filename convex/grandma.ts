@@ -36,6 +36,12 @@ export const checkMessage = action({args:{text:v.string(),sender:v.optional(v.st
   return {...fallback,reasons:fallback.reasons.length?fallback.reasons:['No common scam signals found'],spokenVerdict:'',source:'heuristic'};
 }});
 
+export const askWolfie = action({args:{question:v.string(),trustedName:v.optional(v.string())},handler:async(ctx,args):Promise<{text:string,tone:'friendly'|'neutral'|'reassuring'|'warning',source:'model'|'fallback'}>=>{
+  const answer=await ctx.runAction(internal.anthropic.answerQuestion,args).catch(()=>null);
+  if(answer)return {...answer,source:'model'};
+  return {text:"I couldn't reach my answer service just now, so I haven't taken any action. Please try again in a moment.",tone:'reassuring',source:'fallback'};
+}});
+
 export const analyzeSuspiciousMessage = action({args:{userId:v.id('users'),content:v.string(),claimedOrganization:v.optional(v.string())},handler:async(ctx,args):Promise<{analysisId:string,risk:string,score:number,reasons:string[],officialContact?:string}>=>{
   const verdict=await ctx.runAction(internal.anthropic.checkMessage,{text:args.content,sender:args.claimedOrganization}).catch(()=>null);
   const {risk,score,reasons}=verdict??heuristic(args.content);
