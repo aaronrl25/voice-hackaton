@@ -2,8 +2,9 @@ import { useMemo, useRef, useState } from 'react';
 import { AlertTriangle, ArrowLeft, Check, CheckCircle2, ChevronRight, Clock3, Headphones, HelpCircle, Home, Info, LockKeyhole, Mic, Phone, ShieldCheck, Square, UserRound, Users, Volume2, X } from 'lucide-react';
 import { contacts, seedRequests } from './data';
 import { interpret, type Tab } from './commands';
+import Landing from './Landing';
 import Onboarding from './Onboarding';
-import { loadProfile, saveProfile, type Profile } from './profile';
+import { hasSession, loadProfile, saveProfile, type Profile } from './profile';
 import type { Tone } from './speech';
 import { VoiceOSAdapter, voiceError, voiceSupported, type VoiceState } from './voiceos';
 import type { RequestItem, Risk } from './types';
@@ -29,6 +30,7 @@ export default function App(){
   const [lastTone,setLastTone]=useState<Tone>('neutral');
   const voiceRef=useRef<VoiceOSAdapter|null>(null); voiceRef.current??=new VoiceOSAdapter(); const voiceOS=voiceRef.current;
   const supported=useMemo(voiceSupported,[]);
+  const [authed,setAuthed]=useState(hasSession);
   const [profile,setProfile]=useState(loadProfile);
   const trusted=contacts.find(c=>c.id===profile.trustedId)??contacts[0];
   const item=items.find(x=>x.id===selected);
@@ -48,6 +50,7 @@ export default function App(){
   function trustedApprove(x:RequestItem){update(x.id,{status:'approved',trustedApproved:true,receipt:'Dual approval recorded · Action remains paused for manual verification'});say("Alright, both approvals are in. Nothing has been sent yet.",'reassuring');}
   function block(x:RequestItem){update(x.id,{status:'blocked',receipt:'Blocked by you · Sender not contacted'});setSelected(null);say("Blocked. Nothing went out, and nobody got contacted.",'reassuring');}
 
+  if(!authed) return <Landing onEnter={()=>setAuthed(true)}/>;
   if(!profile.onboarded) return <Onboarding voiceOS={voiceOS} onDone={(p:Profile)=>{saveProfile(p);setProfile(p);say(`You're all set, ${p.name}. Any time you need me, just tap the big button and talk.`,'friendly');}}/>;
   if(item) return <Detail item={item} trusted={trusted.name} back={()=>setSelected(null)} speak={say} approve={()=>approve(item)} trustedApprove={()=>trustedApprove(item)} dismiss={()=>block(item)}/>;
 
@@ -61,6 +64,7 @@ export default function App(){
 
       {tab==='home'&&<>
         <section className="stage">
+          <img className="dashboard-wolfie" src="/assets/wolfie-guardian.png" alt="" aria-hidden="true"/>
           <p className="eyebrow"><span className="pulse"/> You’re protected</p>
           <h1>{greeting()}, {profile.name}.</h1>
           <button className={`mic ${voice}`} onClick={listen} aria-label={stage[voice].label}>
