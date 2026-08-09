@@ -2,7 +2,7 @@ import { useState, type FormEvent } from "react";
 import { ArrowRight, Eye, EyeOff, LockKeyhole, Mic, Play, ShieldCheck, Sparkles, Users } from "lucide-react";
 import { startSession } from "./profile";
 
-export default function Landing({ onEnter }: { onEnter: () => void }) {
+export default function Landing({ onEnter }: { onEnter: (isNewAccount: boolean) => void }) {
   const [view, setView] = useState<"landing" | "login" | "setup">("landing");
   const [showPassword, setShowPassword] = useState(false);
   function finish(event: FormEvent) {
@@ -10,7 +10,7 @@ export default function Landing({ onEnter }: { onEnter: () => void }) {
     // Account only. The name and the trusted contact are collected by the spoken
     // onboarding that runs straight after this, so nobody is asked for them twice.
     startSession();
-    onEnter();
+    onEnter(view === "setup");
   }
   if (view !== "landing") return <div className="auth-page">
     <button className="auth-brand" onClick={() => setView("landing")}><span><ShieldCheck/></span><b>Grandma Mode</b></button>
