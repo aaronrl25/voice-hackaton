@@ -6,11 +6,13 @@ import {
   CheckCircle2,
   ChevronRight,
   Clock3,
+  FileText,
   Headphones,
   HelpCircle,
   Home,
   LockKeyhole,
   Mic,
+  MessageCircle,
   Phone,
   ShieldCheck,
   Sparkles,
@@ -161,7 +163,12 @@ export default function App() {
               </div>
             </section>
             <section className="voice-card">
-              <img className="dashboard-wolfie" src="/assets/wolfie-guardian.png" alt="Wolfie, your safety companion" />
+              <img className="dashboard-wolfie" src="/assets/wolfie-welcome.png" alt="Wolfie offering a friendly helping paw" />
+              <div className="voice-status"><span/>Live <i/><i/><i/></div>
+              <h2>
+                {voice === "listening" ? "I’m listening…" : "How can I help?"}
+              </h2>
+              <div className="voice-wave" aria-hidden="true">{Array.from({ length: 38 }, (_, i) => <i key={i} style={{ height: `${8 + ((i * 13) % 48)}px` }} />)}</div>
               <div className="orb-wrap">
                 <button
                   className={`orb ${voice}`}
@@ -177,27 +184,18 @@ export default function App() {
                 <i />
                 <i />
               </div>
-              <h2>
-                {voice === "listening" ? "I’m listening…" : "How can I help?"}
-              </h2>
               <p>
                 {voice === "listening"
                   ? "Speak naturally. Take your time."
-                  : "Tap the microphone and tell me what you need."}
+                  : "Tap to talk with Wolfie"}
               </p>
               <div className="suggestions">
-                <button
-                  onClick={() =>
-                    setNotice("Your next appointment is Tuesday at 10:30 AM.")
-                  }
-                >
-                  <Clock3 />
-                  “What’s on my calendar?”
-                </button>
                 <button onClick={() => setSelected("r3")}>
-                  <AlertTriangle />
-                  “Is this message safe?”
+                  <MessageCircle />
+                  Check a message
                 </button>
+                <button onClick={() => setNotice("I can explain each charge and check the payment details safely.")}><FileText/>Explain a bill</button>
+                <button onClick={() => setTab("people")}><Users/>Call someone I trust</button>
               </div>
             </section>
             <Section items={items} select={setSelected} />
