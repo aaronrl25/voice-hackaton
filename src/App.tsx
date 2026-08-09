@@ -2,6 +2,7 @@ import { useMemo, useRef, useState } from 'react';
 import { AlertTriangle, ArrowLeft, Check, CheckCircle2, ChevronRight, Clock3, Headphones, HelpCircle, Home, Info, LockKeyhole, Mic, Phone, ShieldCheck, Square, UserRound, Users, Volume2, X } from 'lucide-react';
 import { contacts, seedRequests } from './data';
 import { interpret, type Tab } from './commands';
+import type { Tone } from './speech';
 import { VoiceOSAdapter, voiceError, voiceSupported, type VoiceState } from './voiceos';
 import type { RequestItem, Risk } from './types';
 
@@ -23,14 +24,15 @@ export default function App(){
   const [tab,setTab]=useState<Tab>('home');
   const [voice,setVoice]=useState<VoiceState>('idle');
   const [heard,setHeard]=useState(''); const [reply,setReply]=useState(''); const [notice,setNotice]=useState('');
+  const [lastTone,setLastTone]=useState<Tone>('neutral');
   const voiceRef=useRef<VoiceOSAdapter|null>(null); voiceRef.current??=new VoiceOSAdapter(); const voiceOS=voiceRef.current;
   const supported=useMemo(voiceSupported,[]);
   const item=items.find(x=>x.id===selected);
   const waiting=items.filter(x=>x.status==='awaiting_user'||x.status==='awaiting_trusted');
 
   function update(id:string, patch:Partial<RequestItem>){ setItems(xs=>xs.map(x=>x.id===id?{...x,...patch}:x)); }
-  function say(text:string){ setReply(text); voiceOS.speak(text,setVoice); }
-  function answer(text:string){ setHeard(text); const out=interpret(text,items); if(out.tab) setTab(out.tab); if(out.open) setSelected(out.open); say(out.say); }
+  function say(text:string, tone:Tone='neutral'){ setReply(text); setLastTone(tone); voiceOS.speak(text,setVoice,tone); }
+  function answer(text:string){ setHeard(text); const out=interpret(text,items); if(out.tab) setTab(out.tab); if(out.open) setSelected(out.open); say(out.say,out.tone); }
   function listen(){
     if(voice==='listening'){ voiceOS.stop(); return; }
     if(voice==='speaking'){ voiceOS.cancelSpeech(); setVoice('idle'); return; }
@@ -38,9 +40,9 @@ export default function App(){
     voiceOS.start({onState:setVoice,onInterim:setHeard,onTranscript:answer,onError:code=>{setVoice('idle');setNotice(voiceError(code))}});
   }
   function ask(text:string){ voiceOS.stop(); setNotice(''); answer(text); }
-  function approve(x:RequestItem){ if(x.risk==='medium'){update(x.id,{status:'completed',userApproved:true,receipt:'Confirmed by you · No sensitive information shared'});say('All done, safely. I saved a receipt for you.');} else {update(x.id,{status:'awaiting_trusted',userApproved:true});say('Your approval is saved. Maya still needs to say yes before anything can happen.');} }
-  function trustedApprove(x:RequestItem){update(x.id,{status:'approved',trustedApproved:true,receipt:'Dual approval recorded · Action remains paused for manual verification'});say('Both approvals are recorded. Nothing was sent yet.');}
-  function block(x:RequestItem){update(x.id,{status:'blocked',receipt:'Blocked by you · Sender not contacted'});setSelected(null);say('Blocked. Nothing was sent, and nobody was contacted.');}
+  function approve(x:RequestItem){ if(x.risk==='medium'){update(x.id,{status:'completed',userApproved:true,receipt:'Confirmed by you · No sensitive information shared'});say("Nice, that's all done. I saved you a receipt.",'friendly');} else {update(x.id,{status:'awaiting_trusted',userApproved:true});say("Got it, your approval is in. Maya still needs to say yes before anything happens.",'reassuring');} }
+  function trustedApprove(x:RequestItem){update(x.id,{status:'approved',trustedApproved:true,receipt:'Dual approval recorded · Action remains paused for manual verification'});say("Alright, both approvals are in. Nothing has been sent yet.",'reassuring');}
+  function block(x:RequestItem){update(x.id,{status:'blocked',receipt:'Blocked by you · Sender not contacted'});setSelected(null);say("Blocked. Nothing went out, and nobody got contacted.",'reassuring');}
 
   if(item) return <Detail item={item} back={()=>setSelected(null)} speak={say} approve={()=>approve(item)} trustedApprove={()=>trustedApprove(item)} dismiss={()=>block(item)}/>;
 
@@ -65,7 +67,7 @@ export default function App(){
           {!supported&&<p className="stage-hint">Voice is not available here — the big buttons below do the same thing.</p>}
           {(heard||reply)&&<div className="convo">
             {heard&&<p className="said"><small>You said</small>“{heard}”</p>}
-            {reply&&<div className="answered"><small>Grandma Mode</small><p>{reply}</p><button onClick={()=>say(reply)}><Volume2/>Say it again</button></div>}
+            {reply&&<div className="answered"><small>Grandma Mode</small><p>{reply}</p><button onClick={()=>say(reply,lastTone)}><Volume2/>Say it again</button></div>}
           </div>}
           <div className="suggestions">
             <button onClick={()=>ask('What’s on my calendar?')}><Clock3/>“What’s on my calendar?”</button>
@@ -122,9 +124,10 @@ function Section({items,select,all=false,seeAll}:{items:RequestItem[],select:(id
   </section>
 }
 
-function Detail({item,back,speak,approve,trustedApprove,dismiss}:{item:RequestItem,back:()=>void,speak:(t:string)=>void,approve:()=>void,trustedApprove:()=>void,dismiss:()=>void}){
+function Detail({item,back,speak,approve,trustedApprove,dismiss}:{item:RequestItem,back:()=>void,speak:(t:string,tone?:Tone)=>void,approve:()=>void,trustedApprove:()=>void,dismiss:()=>void}){
   const rc=riskCopy[item.risk],Icon=rc.icon,high=item.risk==='high';
-  const aloud=()=>speak(`${rc.label}. Here is the message from ${item.source}. ${unpunctuated(item.detail)}. I flagged it because: ${spokenList(item.reasons.map(r=>r.toLowerCase()))}.`);
+  const tone:Tone=high?'warning':item.risk==='low'?'friendly':'neutral';
+  const aloud=()=>speak(`${rc.label}. Here's the message from ${item.source}. ${unpunctuated(item.detail)}. I flagged it because: ${spokenList(item.reasons.map(r=>r.toLowerCase()))}.`,tone);
   return <div className="detail-shell">
     <header><button className="back" onClick={back}><ArrowLeft/>Back</button><div className="brand"><div className="brandmark"><ShieldCheck/></div><div><b>Grandma Mode</b><span>Safety check</span></div></div></header>
     <main className="detail-main">

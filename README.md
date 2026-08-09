@@ -30,9 +30,32 @@ feminine-presenting voices, and heavily penalises the novelty voices macOS ships
 so `tom` does not match "Thomas" and `male` does not match "Female". On macOS this
 resolves to Aaron; on Edge to a Microsoft Natural male voice such as Guy or Andrew.
 
-Replies are spoken one sentence per utterance at a slightly slowed rate. This produces
-natural pauses instead of a monotone run-on, and keeps every utterance well under the
-~15 second cutoff Chrome applies to a single utterance.
+Replies are spoken one sentence per utterance. This produces natural pauses instead of a
+monotone run-on, and keeps every utterance well under the ~15 second cutoff Chrome
+applies to a single utterance.
+
+**Emotion.** The Web Speech API has no emotion parameter, so feeling is carried by rate
+and pitch. Every reply declares a `Tone` — `friendly`, `reassuring`, `warning` or
+`neutral` — and `shape()` in `src/speech.ts` turns it into per-sentence prosody. A scam
+warning is slow and low (rate .86); good news is brighter and quicker (rate 1.03). Pitch
+also declines gently across a reply the way a real voice settles as a thought completes,
+and lifts on a question. A fixed rate and pitch on every sentence is most of what reads
+as robotic.
+
+**Register matters as much as prosody.** The spoken lines in `src/commands.ts` use
+contractions and casual phrasing. "I'm not totally sure" sounds like a person; "I am not
+completely certain" sounds like a machine, in the same voice at the same rate.
+
+**Accent.** There is no accent selector. `pickVoice` restricts the pool to `en-US`
+voices, which are General American — effectively the West Coast standard — and only
+falls back to other English locales on a machine with no en-US voice at all.
+
+**For much better audio quality on macOS**, install a high-quality variant of the voice:
+System Settings → Accessibility → Spoken Content → System Voice → Manage Voices, then
+download Aaron (Enhanced) or (Premium). The ranking already scores those variants
+highest, so one will be picked up automatically once installed. This is a far larger
+improvement than any prosody tuning — the standard-quality built-in voices are the main
+remaining source of robotic sound.
 
 Recognised phrases are matched in `src/commands.ts`: asking about your calendar, whether a
 message is safe, to see recent activity or trusted people, or to call a contact by name.

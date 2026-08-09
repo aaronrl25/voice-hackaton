@@ -1,4 +1,4 @@
-import { pickVoice, sentences, speakable } from './speech';
+import { pickVoice, sentences, shape, speakable, type Tone } from './speech';
 
 export type VoiceState = 'idle' | 'listening' | 'thinking' | 'speaking';
 
@@ -79,7 +79,7 @@ export class VoiceOSAdapter {
 
   stop(){ try { this.recognition?.stop(); } catch { /* already stopped */ } }
 
-  speak(text:string, onState:(state:VoiceState)=>void){
+  speak(text:string, onState:(state:VoiceState)=>void, tone:Tone = 'neutral'){
     const synth = window.speechSynthesis;
     if(!synth){ onState('idle'); return; }
     synth.cancel();
@@ -92,7 +92,8 @@ export class VoiceOSAdapter {
     chunks.forEach((chunk,index) => {
       const utterance = new SpeechSynthesisUtterance(chunk);
       if(this.chosen){ utterance.voice = this.chosen; utterance.lang = this.chosen.lang; }
-      utterance.rate = .96; utterance.pitch = .97; utterance.volume = 1;
+      const { rate, pitch } = shape(chunk, index, tone);
+      utterance.rate = rate; utterance.pitch = pitch; utterance.volume = 1;
       if(index === chunks.length - 1) utterance.onend = () => settle('idle');
       utterance.onerror = () => settle('idle');
       synth.speak(utterance);
