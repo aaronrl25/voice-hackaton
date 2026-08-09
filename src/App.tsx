@@ -21,20 +21,242 @@ const greeting=()=>{const h=new Date().getHours();return h<12?'Good morning':h<1
 const unpunctuated=(s:string)=>s.replace(/[.!?…]+\s*$/,'');
 const spokenList=(xs:string[])=>xs.length<2?xs.join(''):`${xs.slice(0,-1).join(', ')}, and ${xs[xs.length-1]}`;
 
-export default function App(){
-  const [items,setItems]=useState(seedRequests);
-  const [selected,setSelected]=useState<string|null>(null);
-  const [tab,setTab]=useState<Tab>('home');
-  const [voice,setVoice]=useState<VoiceState>('idle');
-  const [heard,setHeard]=useState(''); const [reply,setReply]=useState(''); const [notice,setNotice]=useState('');
-  const [lastTone,setLastTone]=useState<Tone>('neutral');
-  const voiceRef=useRef<VoiceOSAdapter|null>(null); voiceRef.current??=new VoiceOSAdapter(); const voiceOS=voiceRef.current;
-  const supported=useMemo(voiceSupported,[]);
-  const [authed,setAuthed]=useState(hasSession);
-  const [profile,setProfile]=useState(loadProfile);
-  const trusted=contacts.find(c=>c.id===profile.trustedId)??contacts[0];
-  const item=items.find(x=>x.id===selected);
-  const waiting=items.filter(x=>x.status==='awaiting_user'||x.status==='awaiting_trusted');
+export default function App() {
+  const [authenticated, setAuthenticated] = useState(
+    () => localStorage.getItem("grandma-mode-session") === "active",
+  );
+  const [items, setItems] = useState(seedRequests);
+  const [selected, setSelected] = useState<string | null>(null);
+  const [tab, setTab] = useState<"home" | "activity" | "people">("home");
+  const [voice, setVoice] = useState<VoiceState>("idle");
+  const [notice, setNotice] = useState("");
+  const voiceOS = useRef(new VoiceOSAdapter());
+  if (!authenticated) return <Landing onEnter={() => setAuthenticated(true)} />;
+  const item = items.find((x) => x.id === selected);
+  function update(id: string, patch: Partial<RequestItem>) {
+    setItems((xs) => xs.map((x) => (x.id === id ? { ...x, ...patch } : x)));
+  }
+  function listen() {
+    if (voice === "listening") {
+      voiceOS.current.stop();
+      return;
+    }
+    const ok = voiceOS.current.start((text) => {
+      setNotice(`I heard: “${text}”`);
+      voiceOS.current.speak(
+        "I heard you. I will check that safely before doing anything.",
+      );
+    }, setVoice);
+    if (!ok) {
+      setNotice(
+        "Voice input is not available in this browser. You can still tap any large button.",
+      );
+    }
+  }
+  function approve(x: RequestItem) {
+    if (x.risk === "medium") {
+      update(x.id, {
+        status: "completed",
+        userApproved: true,
+        receipt: "Confirmed by you · No sensitive information shared",
+      });
+      setNotice("Done safely. I saved a receipt.");
+    } else {
+      update(x.id, { status: "awaiting_trusted", userApproved: true });
+      setNotice(
+        "Your approval is saved. Maya still needs to approve before anything can happen.",
+      );
+    }
+  }
+  function trustedApprove(x: RequestItem) {
+    update(x.id, {
+      status: "approved",
+      trustedApproved: true,
+      receipt:
+        "Dual approval recorded · Action remains paused for manual verification",
+    });
+    setNotice(
+      "Both approvals are recorded. The action is ready for final verified processing.",
+    );
+  }
+  if (item)
+    return (
+      <Detail
+        item={item}
+        back={() => setSelected(null)}
+        approve={() => approve(item)}
+        trustedApprove={() => trustedApprove(item)}
+        dismiss={() => {
+          update(item.id, {
+            status: "blocked",
+            receipt: "Blocked by you · Sender not contacted",
+          });
+          setSelected(null);
+          setNotice("Blocked. Nothing was sent.");
+        }}
+      />
+    );
+  return (
+    <div className="shell">
+      <header>
+        <div className="brand">
+          <div className="brandmark">
+            <ShieldCheck />
+          </div>
+          <div>
+            <b>Grandma Mode</b>
+            <span>Safe help, every step</span>
+          </div>
+        </div>
+        <button className="help">
+          <Phone /> Call Maya
+        </button>
+      </header>
+      <main>
+        {notice && (
+          <div className="notice" role="status">
+            <Sparkles />
+            {notice}
+            <button aria-label="Dismiss" onClick={() => setNotice("")}>
+              <X />
+            </button>
+          </div>
+        )}
+        {tab === "home" && (
+          <>
+            <section className="welcome">
+              <div>
+                <p className="eyebrow">
+                  <span className="pulse" /> You’re protected
+                </p>
+                <h1>
+                  Good afternoon,
+                  <br />
+                  Eleanor.
+                </h1>
+                <p>I’m here to help. You’re always in control.</p>
+              </div>
+              <div className="safe-card">
+                <ShieldCheck />
+                <div>
+                  <b>Everything looks good</b>
+                  <span>No urgent actions needed</span>
+                </div>
+              </div>
+            </section>
+            <section className="voice-card">
+              <img className="dashboard-wolfie" src="/assets/wolfie-welcome.png" alt="Wolfie offering a friendly helping paw" />
+              <div className="voice-status"><span/>Live <i/><i/><i/></div>
+              <h2>
+                {voice === "listening" ? "I’m listening…" : "How can I help?"}
+              </h2>
+              <div className="voice-wave" aria-hidden="true">{Array.from({ length: 38 }, (_, i) => <i key={i} style={{ height: `${8 + ((i * 13) % 48)}px` }} />)}</div>
+              <div className="orb-wrap">
+                <button
+                  className={`orb ${voice}`}
+                  onClick={listen}
+                  aria-label={
+                    voice === "listening"
+                      ? "Stop listening"
+                      : "Start voice assistant"
+                  }
+                >
+                  <Mic />
+                </button>
+                <i />
+                <i />
+              </div>
+              <p>
+                {voice === "listening"
+                  ? "Speak naturally. Take your time."
+                  : "Tap to talk with Wolfie"}
+              </p>
+              <div className="suggestions">
+                <button onClick={() => setSelected("r3")}>
+                  <MessageCircle />
+                  Check a message
+                </button>
+                <button onClick={() => setNotice("I can explain each charge and check the payment details safely.")}><FileText/>Explain a bill</button>
+                <button onClick={() => setTab("people")}><Users/>Call someone I trust</button>
+              </div>
+            </section>
+            <Section items={items} select={setSelected} />
+          </>
+        )}
+        {tab === "activity" && (
+          <>
+            <div className="page-title">
+              <p className="eyebrow">Your safety record</p>
+              <h1>Recent activity</h1>
+              <p>Every check and approval is saved here.</p>
+            </div>
+            <Section items={items} select={setSelected} all />
+          </>
+        )}
+        {tab === "people" && (
+          <div>
+            <div className="page-title">
+              <p className="eyebrow">Your safety circle</p>
+              <h1>Trusted people</h1>
+              <p>High-risk actions need help from someone you trust.</p>
+            </div>
+            <div className="contact-grid">
+              {contacts.map((c) => (
+                <article className="contact" key={c.id}>
+                  <div className="avatar">
+                    {c.initials}
+                    <span className={c.available ? "online" : ""} />
+                  </div>
+                  <div>
+                    <h3>{c.name}</h3>
+                    <p>{c.relationship}</p>
+                    <small>{c.phone}</small>
+                  </div>
+                  <button aria-label={`Call ${c.name}`}>
+                    <Phone />
+                  </button>
+                </article>
+              ))}
+            </div>
+            <div className="info-panel">
+              <LockKeyhole />
+              <div>
+                <h3>Two people, one safe decision</h3>
+                <p>
+                  Grandma Mode never completes a high-risk action unless both
+                  you and a trusted person approve.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+      </main>
+      <nav>
+        <button
+          className={tab === "home" ? "active" : ""}
+          onClick={() => setTab("home")}
+        >
+          <Home />
+          Home
+        </button>
+        <button
+          className={tab === "activity" ? "active" : ""}
+          onClick={() => setTab("activity")}
+        >
+          <Clock3 />
+          Activity
+        </button>
+        <button
+          className={tab === "people" ? "active" : ""}
+          onClick={() => setTab("people")}
+        >
+          <Users />
+          Trusted people
+        </button>
+      </nav>
+    </div>
+  );
+}
 
   function update(id:string, patch:Partial<RequestItem>){ setItems(xs=>xs.map(x=>x.id===id?{...x,...patch}:x)); }
   function say(text:string, tone:Tone='neutral'){ setReply(text); setLastTone(tone); voiceOS.speak(text,setVoice,tone); }
