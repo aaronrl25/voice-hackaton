@@ -1,0 +1,32 @@
+#!/bin/sh
+# Blocks a commit that contains a credential.
+#
+# The runtime guard in src/analysis.ts catches a VITE_-prefixed key when the app
+# boots — too late if the key is already committed and pushed. This catches it at
+# the commit, the last moment it is still private.
+#
+# Installed by `npm install` (the prepare script points core.hooksPath here).
+# Bypass a false positive with:  git commit --no-verify
+
+# Real credentials only. A 'sk-ant-...' placeholder and the literal 'sk-ant-' prefix
+# in scripts/set-anthropic-key.mjs both need 8+ key characters to trip this.
+PATTERN='sk-ant-[A-Za-z0-9_-]{8,}|sk-[A-Za-z0-9]{24,}|(ghp|gho|ghu|ghs)_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,}|AKIA[0-9A-Z]{16}|AIza[0-9A-Za-z_-]{35}|xox[baprs]-[A-Za-z0-9-]{10,}|-----BEGIN [A-Z ]*PRIVATE KEY-----|VITE_[A-Z0-9_]*(KEY|SECRET|TOKEN|PASSWORD)[A-Z0-9_]*[[:space:]]*=[[:space:]]*[^[:space:]#]'
+
+hits=$(
+  git diff --cached --name-only --diff-filter=ACM | while IFS= read -r file; do
+    # Scan the staged blob, not the working tree, and skip binaries.
+    git show ":$file" 2>/dev/null | grep -Iq . 2>/dev/null || continue
+    git show ":$file" 2>/dev/null | grep -nEI "$PATTERN" | cut -d: -f1 |
+      while IFS= read -r line; do printf '    %s:%s\n' "$file" "$line"; done
+  done
+)
+
+[ -z "$hits" ] && exit 0
+
+# Print locations only — never the matched text, which is the secret.
+printf '\n\033[31m✗ Commit blocked: possible credential in staged changes.\033[0m\n\n'
+printf '%s\n' "$hits"
+printf '\n  Move it to .env.local (no VITE_ prefix) and run:  npm run key\n'
+printf '  Then unstage the file.\n'
+printf '  Genuine false positive:  git commit --no-verify\n\n'
+exit 1
