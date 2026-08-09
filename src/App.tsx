@@ -22,6 +22,7 @@ import {
 import { contacts, seedRequests } from "./data";
 import { VoiceOSAdapter, type VoiceState } from "./voiceos";
 import type { RequestItem, Risk } from "./types";
+import Landing from "./Landing";
 
 const fmt = (n: number) =>
   new Intl.DateTimeFormat("en", { hour: "numeric", minute: "2-digit" }).format(
@@ -37,12 +38,16 @@ const riskCopy: Record<
 };
 
 export default function App() {
+  const [authenticated, setAuthenticated] = useState(
+    () => localStorage.getItem("grandma-mode-session") === "active",
+  );
   const [items, setItems] = useState(seedRequests);
   const [selected, setSelected] = useState<string | null>(null);
   const [tab, setTab] = useState<"home" | "activity" | "people">("home");
   const [voice, setVoice] = useState<VoiceState>("idle");
   const [notice, setNotice] = useState("");
   const voiceOS = useRef(new VoiceOSAdapter());
+  if (!authenticated) return <Landing onEnter={() => setAuthenticated(true)} />;
   const item = items.find((x) => x.id === selected);
   function update(id: string, patch: Partial<RequestItem>) {
     setItems((xs) => xs.map((x) => (x.id === id ? { ...x, ...patch } : x)));
@@ -156,6 +161,7 @@ export default function App() {
               </div>
             </section>
             <section className="voice-card">
+              <img className="dashboard-wolfie" src="/assets/wolfie-guardian.png" alt="Wolfie, your safety companion" />
               <div className="orb-wrap">
                 <button
                   className={`orb ${voice}`}
