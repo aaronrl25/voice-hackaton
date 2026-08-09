@@ -1,35 +1,49 @@
 // Voice selection and speech shaping. The assistant should sound like one
 // consistent, calm person — never the platform's robotic default voice.
 
-// Warm, natural-sounding English voices, best first. Matched as substrings.
-const preferred = [
-  'ava','samantha','allison','serena','susan','joanna',
-  'jenny','aria','michelle','sonia','libby',
-  'google us english','google uk english female','karen','moira','tessa','fiona',
+// The assistant is voiced as a calm, capable young man — a security professional
+// talking you through something, not a switchboard. Best first.
+const masculine = [
+  'aaron',                                                          // macOS: young US male
+  'andrew','guy','brandon','christopher','eric','davis','steffan',  // Microsoft Natural (US)
+  'ryan','thomas','george','brian','roger',                         // Microsoft Natural (UK)
+  'google us english male','google uk english male',
+  'reed','arthur','oliver','nathan','tom','alex','daniel','james','gordon','rishi',
+];
+
+// Feminine-presenting English voices, skipped in favour of the persona above.
+const feminine = [
+  'samantha','ava','allison','susan','serena','joanna','karen','moira','tessa','fiona',
+  'victoria','vicki','nicky','martha','catherine','kathy','shelley','sandy','flo','grandma',
+  'zoe','emma','hazel','zira','eva','clara','natasha','amber','ashley','elizabeth','linda',
+  'jenny','aria','michelle','sonia','libby','google us english','google uk english female',
 ];
 
 // Classic formant-synthesis and novelty voices. Intelligible at best, alarming at worst.
 const novelty = [
-  'albert','bad news','bahh','bells','boing','bubbles','cellos','deranged','eddy','flo',
-  'good news','grandma','grandpa','jester','junior','organ','ralph','reed','rocko','sandy',
-  'shelley','superstar','trinoids','whisper','wobble','zarvox','fred','kathy','princess',
-  'bruce','agnes','victoria','vicki','alex','compact','eloquence','espeak',
+  'albert','bad news','bahh','bells','boing','bubbles','cellos','deranged','eddy',
+  'good news','grandpa','jester','junior','organ','ralph','rocko','superstar','trinoids',
+  'whisper','wobble','zarvox','fred','princess','bruce','agnes','compact','eloquence','espeak',
 ];
 
-const includesAny = (name:string, list:string[]) => list.some(entry => name.includes(entry));
+// Whole-word matching, so 'tom' does not match "Thomas" and 'male' does not match "Female".
+const word = (name:string, entry:string) => new RegExp(`\\b${entry}\\b`).test(name);
+const words = (name:string, list:string[]) => list.some(entry => word(name, entry));
 
 export function pickVoice(voices:SpeechSynthesisVoice[]):SpeechSynthesisVoice|undefined {
   const english = voices.filter(v => /^en\b|^en[-_]/i.test(v.lang));
   if(!english.length) return undefined;
   const score = (v:SpeechSynthesisVoice) => {
     const name = v.name.toLowerCase();
+    const explicitlyMale = /\bmale\b/.test(name);
     let points = 0;
     if(/natural|neural|premium|enhanced/.test(name)) points += 60;
-    const rank = preferred.findIndex(entry => name.includes(entry));
-    if(rank >= 0) points += 40 - rank;
+    const rank = masculine.findIndex(entry => word(name, entry));
+    if(rank >= 0) points += 45 - rank;
+    if(explicitlyMale) points += 20;
+    if(!explicitlyMale && words(name, feminine)) points -= 70;
+    if(words(name, novelty)) points -= 90;
     if(/^en[-_]us/i.test(v.lang)) points += 8;
-    if(v.default) points += 4;
-    if(includesAny(name, novelty)) points -= 80;
     return points;
   };
   return [...english].sort((a,b) => score(b) - score(a))[0];

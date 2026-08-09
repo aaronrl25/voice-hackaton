@@ -92,7 +92,7 @@ export class VoiceOSAdapter {
     chunks.forEach((chunk,index) => {
       const utterance = new SpeechSynthesisUtterance(chunk);
       if(this.chosen){ utterance.voice = this.chosen; utterance.lang = this.chosen.lang; }
-      utterance.rate = .94; utterance.pitch = 1.02; utterance.volume = 1;
+      utterance.rate = .96; utterance.pitch = .97; utterance.volume = 1;
       if(index === chunks.length - 1) utterance.onend = () => settle('idle');
       utterance.onerror = () => settle('idle');
       synth.speak(utterance);

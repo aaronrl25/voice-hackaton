@@ -19,11 +19,16 @@ Design constraints for older users:
 
 ### The assistant's voice
 
-`src/speech.ts` chooses one consistent voice rather than accepting the platform default,
-which is frequently a robotic formant-synthesis voice. It ranks the installed English
-voices, favouring neural/premium ones and a list of known-warm names, and heavily
-penalising the novelty voices macOS ships (Zarvox, Trinoids, Bad News, and friends).
-On macOS this resolves to Samantha; on Edge to a Microsoft Natural voice.
+The assistant is voiced as a calm, capable young man — a security professional talking
+you through something. `src/speech.ts` ranks the installed English voices to find him
+rather than accepting the platform default, which is frequently a robotic
+formant-synthesis voice.
+
+Ranking favours neural/premium voices and a list of masculine names, skips
+feminine-presenting voices, and heavily penalises the novelty voices macOS ships
+(Zarvox, Trinoids, Bad News, and friends). Names are matched on whole-word boundaries,
+so `tom` does not match "Thomas" and `male` does not match "Female". On macOS this
+resolves to Aaron; on Edge to a Microsoft Natural male voice such as Guy or Andrew.
 
 Replies are spoken one sentence per utterance at a slightly slowed rate. This produces
 natural pauses instead of a monotone run-on, and keeps every utterance well under the
