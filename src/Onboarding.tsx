@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { ArrowLeft, Check, Mic, Phone, ShieldCheck, Square, Volume2 } from 'lucide-react';
 import { contacts } from './data';
+import { micRecoverySteps, useMicPermission } from './micPermission';
 import { cleanName, type Profile } from './profile';
 import { VoiceOSAdapter, voiceError, type VoiceState } from './voiceos';
 
@@ -18,8 +19,12 @@ export default function Onboarding({voiceOS,onDone}:{voiceOS:VoiceOSAdapter,onDo
   const [heard,setHeard]=useState('');
   const [micTested,setMicTested]=useState(false);
   const [notice,setNotice]=useState('');
+  const mic=useMicPermission();
 
   const trusted=contacts.find(c=>c.id===trustedId)!;
+  // 'denied' is terminal and the other two never start, so the voice paths are hidden
+  // rather than offered and left to fail.
+  const canListen=mic==='granted'||mic==='prompt';
 
   // Spoken only when advancing, never on mount: browsers block speech synthesis
   // until the user has interacted with the page at least once.
@@ -63,21 +68,39 @@ export default function Onboarding({voiceOS,onDone}:{voiceOS:VoiceOSAdapter,onDo
       </section>}
 
       {step===1&&<section className="onboard-step">
-        <h1>First, let’s check I can hear you.</h1>
-        <p className="onboard-lead">Tap the big button and say <b>hello</b>. I only listen after you tap — never before.</p>
-        <button className={`mic ${voice}`} onClick={()=>listen(text=>{setHeard(text);setMicTested(true);voiceOS.speak('Perfect. I heard you clearly. That is all there is to it.',setVoice,'friendly');})} aria-label={voice==='listening'?'Stop listening':'Tap and say hello'}>
-          <span className="ring"/><span className="ring wide"/>
-          {voice==='listening'?<Square/>:voice==='speaking'?<Volume2/>:<Mic/>}
-        </button>
-        <p className="onboard-state" aria-live="polite">{voice==='listening'?'I’m listening…':micTested?'Perfect — that’s all there is to it.':'Waiting for you to tap'}</p>
-        {heard&&<p className="onboard-heard">“{heard}”</p>}
-        {notice&&<p className="onboard-notice">{notice}</p>}
-        <button className="onboard-primary" onClick={()=>go(2,'Great. Now, what should I call you? Tap the button and say your name.')}>{micTested?'Continue':'Continue without testing'}</button>
+        {/* Blocked is terminal — the browser will not prompt again — so never show the
+            microphone here, only the way back out. */}
+        {mic==='denied'||mic==='unsupported'||mic==='insecure' ? <>
+          <h1>{mic==='denied'?'I can’t hear you yet.':'I can’t listen in this browser.'}</h1>
+          <p className="onboard-lead">{mic==='denied'
+            ? 'The microphone is switched off for this page. It only takes a moment to turn back on.'
+            : mic==='insecure'
+              ? 'Listening needs a secure connection, and this page isn’t on one.'
+              : 'This browser can’t listen yet — but nothing is lost.'}</p>
+          {mic==='denied'&&<ol className="onboard-steps">{micRecoverySteps().map(s=><li key={s}>{s}</li>)}</ol>}
+          <p className="onboard-reassure"><Check/>Everything still works by tapping. You will not miss anything.</p>
+          {mic==='denied'&&<p className="onboard-foot">If that sounds fiddly, ask the person who helps you with your phone. This page will notice the moment it’s switched on.</p>}
+          <button className="onboard-primary" onClick={()=>go(2,'No problem at all. Now, what should I call you? You can tap to type it.')}>Carry on without it</button>
+        </> : <>
+          <h1>First, let’s check I can hear you.</h1>
+          <p className="onboard-lead">{mic==='granted'
+            ? <>Your microphone is already on. Tap the big button and say <b>hello</b>.</>
+            : <>Tap the big button and say <b>hello</b>. I only listen after you tap — never before.</>}</p>
+          {mic==='prompt'&&!micTested&&<p className="onboard-callout">When you tap, a small box appears at the <b>top of the screen</b> asking to use the microphone. Tap <b>Allow</b>.</p>}
+          <button className={`mic ${voice}`} onClick={()=>listen(text=>{setHeard(text);setMicTested(true);voiceOS.speak('Perfect. I heard you clearly. That is all there is to it.',setVoice,'friendly');})} aria-label={voice==='listening'?'Stop listening':'Tap and say hello'}>
+            <span className="ring"/><span className="ring wide"/>
+            {voice==='listening'?<Square/>:voice==='speaking'?<Volume2/>:<Mic/>}
+          </button>
+          <p className="onboard-state" aria-live="polite">{voice==='listening'?'I’m listening…':micTested?'Perfect — that’s all there is to it.':'Waiting for you to tap'}</p>
+          {heard&&<p className="onboard-heard">“{heard}”</p>}
+          {notice&&<p className="onboard-notice">{notice}</p>}
+          <button className="onboard-primary" onClick={()=>go(2,'Great. Now, what should I call you? Tap the button and say your name.')}>{micTested?'Continue':'Continue without testing'}</button>
+        </>}
       </section>}
 
       {step===2&&<section className="onboard-step">
         <h1>What should I call you?</h1>
-        {!typing&&<>
+        {!typing&&canListen&&<>
           <p className="onboard-lead">Tap the button and say your first name.</p>
           <button className={`mic ${voice}`} onClick={()=>listen(text=>{const n=cleanName(text);setName(n);setHeard(n);voiceOS.speak(n?`Did you say ${n}?`:'Sorry, I did not catch that. Try once more.',setVoice,'reassuring');})} aria-label={voice==='listening'?'Stop listening':'Tap and say your name'}>
             <span className="ring"/><span className="ring wide"/>
@@ -92,11 +115,11 @@ export default function Onboarding({voiceOS,onDone}:{voiceOS:VoiceOSAdapter,onDo
           {notice&&<p className="onboard-notice">{notice}</p>}
           <button className="onboard-link" onClick={()=>{setTyping(true);setDraft(name)}}>Type it instead</button>
         </>}
-        {typing&&<>
+        {(typing||!canListen)&&<>
           <p className="onboard-lead">Type your first name, then tap Continue.</p>
           <input className="onboard-input" value={draft} onChange={e=>setDraft(e.target.value)} placeholder="Your name" aria-label="Your first name" autoFocus/>
           <button className="onboard-primary" onClick={()=>{const n=cleanName(draft);setName(n);go(3,n?`Lovely to meet you, ${n}. Last thing: who should I call if something looks wrong?`:'Last thing: who should I call if something looks wrong?')}}>Continue</button>
-          <button className="onboard-link" onClick={()=>setTyping(false)}>Say it out loud instead</button>
+          {canListen&&<button className="onboard-link" onClick={()=>setTyping(false)}>Say it out loud instead</button>}
         </>}
         {!typing&&!name&&<button className="onboard-link" onClick={()=>go(3,'No problem. Last thing: who should I call if something looks wrong?')}>Skip for now</button>}
       </section>}
