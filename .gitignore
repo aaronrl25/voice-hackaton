@@ -4,3 +4,4 @@ dist
 convex/_generated
 *.log
 *.tsbuildinfo
+.DS_Store
