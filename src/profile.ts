@@ -3,7 +3,14 @@ import { contacts } from './data';
 export type Profile = { name:string; trustedId:string; onboarded:boolean };
 
 const KEY = 'grandma-mode.profile';
+const SESSION_KEY = 'grandma-mode-session';
 export const blankProfile:Profile = { name:'', trustedId:contacts[0].id, onboarded:false };
+
+// The account gate (Landing) and the spoken setup (Onboarding) are separate stages:
+// signing in says who you are to the service, onboarding teaches the app and fills
+// in the profile. They must agree on one key each, hence both living here.
+export const hasSession = () => { try { return localStorage.getItem(SESSION_KEY) === 'active'; } catch { return false; } };
+export const startSession = () => { try { localStorage.setItem(SESSION_KEY,'active'); } catch { /* not fatal */ } };
 
 // Storage can throw in private windows and when cookies are blocked. Onboarding
 // running twice is a small annoyance; a crash on load is not survivable.
