@@ -2,6 +2,34 @@
 
 An accessible voice-first safety assistant built with React, a VoiceOS adapter, and Convex.
 
+## Onboarding
+
+Four screens, in `src/Onboarding.tsx`, designed for someone who does not consider
+themselves good with technology:
+
+1. **Welcome** — what the assistant does, and that setup takes about a minute. Telling
+   someone how long it lasts is most of what stops them abandoning it.
+2. **Hear me** — tap the big button and say hello. This is a rehearsal of the app's only
+   real gesture, and it doubles as the microphone permission prompt, asked *after* the
+   plain-language explanation of when it listens rather than cold on load.
+3. **Your name** — spoken, with "Type it instead" alongside. `cleanName` in
+   `src/profile.ts` handles the whole-sentence answers people actually give: "my name is
+   Margaret" becomes "Margaret".
+4. **Your trusted person** — pick who gets asked about risky actions.
+
+Rules the flow holds to:
+
+- **No dead ends.** Every step is skippable and skipping still yields a usable profile,
+  so a failed microphone or a misheard name can never trap someone on a screen.
+- **One question per screen**, with Back always available and a "Step 2 of 3" counter.
+- **The assistant speaks each step aloud**, and only ever on advancing — never on mount,
+  since browsers block speech synthesis before the first interaction.
+- **Choices take effect.** The trusted person chosen here is used throughout: the header
+  call button, the approval gate labels, and the spoken replies. It can be changed later
+  on the People screen, exactly as the last step promises.
+
+The profile persists in `localStorage`, guarded against private-window failures.
+
 ## Voice-first design
 
 Speaking is the primary way to use the app. The home screen is a single large microphone

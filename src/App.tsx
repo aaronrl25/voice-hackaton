@@ -2,6 +2,8 @@ import { useMemo, useRef, useState } from 'react';
 import { AlertTriangle, ArrowLeft, Check, CheckCircle2, ChevronRight, Clock3, Headphones, HelpCircle, Home, Info, LockKeyhole, Mic, Phone, ShieldCheck, Square, UserRound, Users, Volume2, X } from 'lucide-react';
 import { contacts, seedRequests } from './data';
 import { interpret, type Tab } from './commands';
+import Onboarding from './Onboarding';
+import { loadProfile, saveProfile, type Profile } from './profile';
 import type { Tone } from './speech';
 import { VoiceOSAdapter, voiceError, voiceSupported, type VoiceState } from './voiceos';
 import type { RequestItem, Risk } from './types';
@@ -27,12 +29,14 @@ export default function App(){
   const [lastTone,setLastTone]=useState<Tone>('neutral');
   const voiceRef=useRef<VoiceOSAdapter|null>(null); voiceRef.current??=new VoiceOSAdapter(); const voiceOS=voiceRef.current;
   const supported=useMemo(voiceSupported,[]);
+  const [profile,setProfile]=useState(loadProfile);
+  const trusted=contacts.find(c=>c.id===profile.trustedId)??contacts[0];
   const item=items.find(x=>x.id===selected);
   const waiting=items.filter(x=>x.status==='awaiting_user'||x.status==='awaiting_trusted');
 
   function update(id:string, patch:Partial<RequestItem>){ setItems(xs=>xs.map(x=>x.id===id?{...x,...patch}:x)); }
   function say(text:string, tone:Tone='neutral'){ setReply(text); setLastTone(tone); voiceOS.speak(text,setVoice,tone); }
-  function answer(text:string){ setHeard(text); const out=interpret(text,items); if(out.tab) setTab(out.tab); if(out.open) setSelected(out.open); say(out.say,out.tone); }
+  function answer(text:string){ setHeard(text); const out=interpret(text,items,trusted.name); if(out.tab) setTab(out.tab); if(out.open) setSelected(out.open); say(out.say,out.tone); }
   function listen(){
     if(voice==='listening'){ voiceOS.stop(); return; }
     if(voice==='speaking'){ voiceOS.cancelSpeech(); setVoice('idle'); return; }
@@ -40,16 +44,17 @@ export default function App(){
     voiceOS.start({onState:setVoice,onInterim:setHeard,onTranscript:answer,onError:code=>{setVoice('idle');setNotice(voiceError(code))}});
   }
   function ask(text:string){ voiceOS.stop(); setNotice(''); answer(text); }
-  function approve(x:RequestItem){ if(x.risk==='medium'){update(x.id,{status:'completed',userApproved:true,receipt:'Confirmed by you · No sensitive information shared'});say("Nice, that's all done. I saved you a receipt.",'friendly');} else {update(x.id,{status:'awaiting_trusted',userApproved:true});say("Got it, your approval is in. Maya still needs to say yes before anything happens.",'reassuring');} }
+  function approve(x:RequestItem){ if(x.risk==='medium'){update(x.id,{status:'completed',userApproved:true,receipt:'Confirmed by you · No sensitive information shared'});say("Nice, that's all done. I saved you a receipt.",'friendly');} else {update(x.id,{status:'awaiting_trusted',userApproved:true});say(`Got it, your approval is in. ${trusted.name} still needs to say yes before anything happens.`,'reassuring');} }
   function trustedApprove(x:RequestItem){update(x.id,{status:'approved',trustedApproved:true,receipt:'Dual approval recorded · Action remains paused for manual verification'});say("Alright, both approvals are in. Nothing has been sent yet.",'reassuring');}
   function block(x:RequestItem){update(x.id,{status:'blocked',receipt:'Blocked by you · Sender not contacted'});setSelected(null);say("Blocked. Nothing went out, and nobody got contacted.",'reassuring');}
 
-  if(item) return <Detail item={item} back={()=>setSelected(null)} speak={say} approve={()=>approve(item)} trustedApprove={()=>trustedApprove(item)} dismiss={()=>block(item)}/>;
+  if(!profile.onboarded) return <Onboarding voiceOS={voiceOS} onDone={(p:Profile)=>{saveProfile(p);setProfile(p);say(`You're all set, ${p.name}. Any time you need me, just tap the big button and talk.`,'friendly');}}/>;
+  if(item) return <Detail item={item} trusted={trusted.name} back={()=>setSelected(null)} speak={say} approve={()=>approve(item)} trustedApprove={()=>trustedApprove(item)} dismiss={()=>block(item)}/>;
 
   return <div className="shell">
     <header>
       <div className="brand"><div className="brandmark"><ShieldCheck/></div><div><b>Grandma Mode</b><span>Safe help, every step</span></div></div>
-      <button className="help"><Phone/><span>Call Maya</span></button>
+      <button className="help"><Phone/><span>Call {trusted.name}</span></button>
     </header>
     <main>
       {notice&&<div className="notice" role="status"><Info/><p>{notice}</p><button aria-label="Dismiss message" onClick={()=>setNotice('')}><X/></button></div>}
@@ -57,7 +62,7 @@ export default function App(){
       {tab==='home'&&<>
         <section className="stage">
           <p className="eyebrow"><span className="pulse"/> You’re protected</p>
-          <h1>{greeting()}, Eleanor.</h1>
+          <h1>{greeting()}, {profile.name}.</h1>
           <button className={`mic ${voice}`} onClick={listen} aria-label={stage[voice].label}>
             <span className="ring"/><span className="ring wide"/>
             {voice==='listening'?<Square/>:voice==='speaking'?<Volume2/>:<Mic/>}
@@ -96,7 +101,11 @@ export default function App(){
         <div className="page-title"><p className="eyebrow">Your safety circle</p><h1>Trusted people</h1><p>High-risk actions need help from someone you trust.</p></div>
         <div className="contact-grid">{contacts.map(c=><article className="contact" key={c.id}>
           <div className="avatar">{c.initials}<span className={c.available?'online':''}/></div>
-          <div className="contact-copy"><h3>{c.name}</h3><p>{c.relationship}</p><small>{c.phone}</small></div>
+          <div className="contact-copy"><h3>{c.name}</h3><p>{c.relationship}</p><small>{c.phone}</small>
+            {c.id===profile.trustedId
+              ?<em className="trusted-badge"><Check/>Your trusted person</em>
+              :<button className="trusted-choose" onClick={()=>{const next={...profile,trustedId:c.id};saveProfile(next);setProfile(next);say(`Okay. From now on I'll check with ${c.name}.`,'reassuring');}}>Make {c.name} my trusted person</button>}
+          </div>
           <button aria-label={`Call ${c.name}`}><Phone/></button>
         </article>)}</div>
         <div className="info-panel"><LockKeyhole/><div><h3>Two people, one safe decision</h3><p>Grandma Mode never completes a high-risk action unless both you and a trusted person approve.</p></div></div>
@@ -124,7 +133,7 @@ function Section({items,select,all=false,seeAll}:{items:RequestItem[],select:(id
   </section>
 }
 
-function Detail({item,back,speak,approve,trustedApprove,dismiss}:{item:RequestItem,back:()=>void,speak:(t:string,tone?:Tone)=>void,approve:()=>void,trustedApprove:()=>void,dismiss:()=>void}){
+function Detail({item,trusted,back,speak,approve,trustedApprove,dismiss}:{item:RequestItem,trusted:string,back:()=>void,speak:(t:string,tone?:Tone)=>void,approve:()=>void,trustedApprove:()=>void,dismiss:()=>void}){
   const rc=riskCopy[item.risk],Icon=rc.icon,high=item.risk==='high';
   const tone:Tone=high?'warning':item.risk==='low'?'friendly':'neutral';
   const aloud=()=>speak(`${rc.label}. Here's the message from ${item.source}. ${unpunctuated(item.detail)}. I flagged it because: ${spokenList(item.reasons.map(r=>r.toLowerCase()))}.`,tone);
@@ -140,16 +149,16 @@ function Detail({item,back,speak,approve,trustedApprove,dismiss}:{item:RequestIt
       <div className="why"><h2>Why I flagged this</h2>{item.reasons.map(r=><div key={r}><AlertTriangle/><span>{r}</span></div>)}</div>
       {high&&<div className="gate">
         <div className="gate-title"><LockKeyhole/><div><p>Action Gate</p><h2>Two approvals required</h2></div></div>
-        <div className="approval-track"><Approval done={!!item.userApproved} label="Your approval" sub={item.userApproved?'Approved':'Waiting for you'}/><span className="trackline"/><Approval done={!!item.trustedApproved} label="Maya’s approval" sub={item.trustedApproved?'Approved':'Trusted contact'}/></div>
+        <div className="approval-track"><Approval done={!!item.userApproved} label="Your approval" sub={item.userApproved?'Approved':'Waiting for you'}/><span className="trackline"/><Approval done={!!item.trustedApproved} label={`${trusted}’s approval`} sub={item.trustedApproved?'Approved':'Trusted contact'}/></div>
         <p className="gate-note"><ShieldCheck/>Nothing can happen until both people say yes.</p>
       </div>}
       {item.receipt&&<div className="receipt"><CheckCircle2/><div><b>Safety receipt</b><p>{item.receipt}</p></div></div>}
       <div className="actions">
-        {item.status==='awaiting_trusted'?<button className="primary" onClick={trustedApprove}><Users/>Simulate Maya’s approval</button>
-          :item.status!=='completed'&&item.status!=='approved'&&<button className="primary" onClick={approve}>{high?<><LockKeyhole/>Yes, ask Maya too</>:<><Check/>Yes, continue safely</>}</button>}
+        {item.status==='awaiting_trusted'?<button className="primary" onClick={trustedApprove}><Users/>Simulate {trusted}’s approval</button>
+          :item.status!=='completed'&&item.status!=='approved'&&<button className="primary" onClick={approve}>{high?<><LockKeyhole/>Yes, ask {trusted} too</>:<><Check/>Yes, continue safely</>}</button>}
         <button className="secondary" onClick={dismiss}><X/>No, block this</button>
       </div>
-      <p className="reassure"><Headphones/>Not sure? Tap “Read this to me”, or call Maya.</p>
+      <p className="reassure"><Headphones/>Not sure? Tap “Read this to me”, or call {trusted}.</p>
     </main>
   </div>
 }
