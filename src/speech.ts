@@ -33,6 +33,10 @@ const words = (name:string, list:string[]) => list.some(entry => word(name, entr
 export function pickVoice(voices:SpeechSynthesisVoice[]):SpeechSynthesisVoice|undefined {
   const english = voices.filter(v => /^en\b|^en[-_]/i.test(v.lang));
   if(!english.length) return undefined;
+  // General American is the West Coast standard, so an en-US voice is the accent.
+  // Only fall back to other English locales if this machine has no en-US at all.
+  const american = english.filter(v => /^en[-_]us/i.test(v.lang));
+  const pool = american.length ? american : english;
   const score = (v:SpeechSynthesisVoice) => {
     const name = v.name.toLowerCase();
     const explicitlyMale = /\bmale\b/.test(name);
@@ -46,7 +50,31 @@ export function pickVoice(voices:SpeechSynthesisVoice[]):SpeechSynthesisVoice|un
     if(/^en[-_]us/i.test(v.lang)) points += 8;
     return points;
   };
-  return [...english].sort((a,b) => score(b) - score(a))[0];
+  return [...pool].sort((a,b) => score(b) - score(a))[0];
+}
+
+// The Web Speech API exposes no emotion parameter, so feeling has to be carried by
+// rate and pitch. These are the deliveries the assistant switches between.
+export type Tone = 'neutral' | 'friendly' | 'reassuring' | 'warning';
+
+const toneBase:Record<Tone,{rate:number,pitch:number}> = {
+  neutral:    { rate: .98, pitch: 1    },
+  friendly:   { rate: 1.03, pitch: 1.07 }, // brighter and quicker, the way good news lands
+  reassuring: { rate: .93, pitch: 1.02 }, // unhurried and warm
+  warning:    { rate: .86, pitch: .9   }, // slow and low; the listener should feel it
+};
+
+const clamp = (n:number) => Math.round(Math.min(2, Math.max(.5, n)) * 100) / 100;
+
+// A flat rate and pitch across every sentence is most of what reads as robotic.
+// Real speech declines in pitch as a thought completes, and lifts on a question.
+export function shape(sentence:string, index:number, tone:Tone){
+  const base = toneBase[tone];
+  let { rate, pitch } = base;
+  pitch -= Math.min(index, 3) * .022;
+  if(/\?\s*$/.test(sentence)){ pitch += .075; rate += .02; }
+  else if(/!\s*$/.test(sentence)){ pitch += .045; rate += .03; }
+  return { rate: clamp(rate), pitch: clamp(pitch) };
 }
 
 // Smart punctuation and layout characters are read out literally by some engines.
