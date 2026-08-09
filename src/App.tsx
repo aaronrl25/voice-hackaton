@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { AlertTriangle, ArrowLeft, Check, CheckCircle2, ChevronRight, Clock3, FileText, Headphones, HelpCircle, Home, Info, LockKeyhole, MessageCircle, Mic, Phone, ShieldCheck, Square, UserRound, Users, Volume2, X } from 'lucide-react';
 import { contacts, seedRequests } from './data';
 import { analyzeMessage, liveAnalysis } from './analysis';
@@ -9,6 +9,10 @@ import { blankProfile, loadProfile, saveProfile, type Profile } from './profile'
 import type { Tone } from './speech';
 import { VoiceOSAdapter, voiceError, voiceSupported, type VoiceState } from './voiceos';
 import type { RequestItem, Risk } from './types';
+import wolfieScanning from './assets/wolfie-scanning-removebg-preview.png';
+import wolfieWelcome from './assets/wolfie-welcome-removebg-preview.png';
+import wolfieWelcomeSecond from './assets/wolfie-welcome-removebg-preview (1).png';
+const wolfieSpeechPoses=[wolfieScanning,wolfieWelcome,wolfieWelcomeSecond];
 const fmt=(n:number)=>new Intl.DateTimeFormat('en',{hour:'numeric',minute:'2-digit'}).format(n);
 const riskCopy:Record<Risk,{label:string,icon:typeof Check,color:string}>={low:{label:'Looks safe',icon:CheckCircle2,color:'green'},medium:{label:'Let’s double-check',icon:HelpCircle,color:'amber'},high:{label:'This looks dangerous',icon:AlertTriangle,color:'red'}};
 const stage:Record<VoiceState,{title:string,hint:string,label:string}>={
@@ -29,6 +33,7 @@ export default function App(){
   const [voice,setVoice]=useState<VoiceState>('idle');
   const [heard,setHeard]=useState(''); const [reply,setReply]=useState(''); const [notice,setNotice]=useState('');
   const [lastTone,setLastTone]=useState<Tone>('neutral');
+  const [wolfiePose,setWolfiePose]=useState(0);
   const voiceRef=useRef<VoiceOSAdapter|null>(null); voiceRef.current??=new VoiceOSAdapter(); const voiceOS=voiceRef.current;
   const supported=useMemo(voiceSupported,[]);
   // Always begin with the public story. A saved profile is used only after the
@@ -38,6 +43,12 @@ export default function App(){
   const trusted=contacts.find(c=>c.id===profile.trustedId)??contacts[0];
   const item=items.find(x=>x.id===selected);
   const waiting=items.filter(x=>x.status==='awaiting_user'||x.status==='awaiting_trusted');
+
+  useEffect(()=>{
+    if(voice!=='speaking'){ setWolfiePose(0); return; }
+    const timer=window.setInterval(()=>setWolfiePose(current=>(current+1)%wolfieSpeechPoses.length),650);
+    return ()=>window.clearInterval(timer);
+  },[voice]);
 
   function update(id:string, patch:Partial<RequestItem>){ setItems(xs=>xs.map(x=>x.id===id?{...x,...patch}:x)); }
   function say(text:string, tone:Tone='neutral'){ setReply(text); setLastTone(tone); voiceOS.speak(text,setVoice,tone); }
@@ -82,12 +93,17 @@ export default function App(){
       {notice&&<div className="notice" role="status"><Info/><p>{notice}</p><button aria-label="Dismiss message" onClick={()=>setNotice('')}><X/></button></div>}
 
       {tab==='home'&&<>
+        <section className="protection-strip" aria-label="Protection status">
+          <div><span className="status-orb"><ShieldCheck/></span><p><small>Guardian status</small><b>Wolfie is active</b></p></div>
+          <div><span className="status-orb"><Clock3/></span><p><small>Checks reviewed</small><b>{items.length} safety checks</b></p></div>
+          <div><span className="status-orb"><Users/></span><p><small>Safety circle</small><b>{trusted.name} is connected</b></p></div>
+        </section>
         <section className="stage">
-          <img className="dashboard-wolfie" src="/assets/wolfie-welcome.png" alt="" aria-hidden="true"/>
           {/* Decorative twin of the stage title, which already announces state via aria-live. */}
           <div className="voice-status" aria-hidden="true"><span/>{statusWord[voice]}<i/><i/><i/></div>
           <p className="eyebrow"><span className="pulse"/> You’re protected</p>
           <h1>{greeting()}, {profile.name}.</h1>
+          <img className={`dashboard-wolfie pose-${wolfiePose}`} src={wolfieSpeechPoses[wolfiePose]} alt="Wolfie, your safety companion"/>
           <button className={`mic ${voice}`} onClick={listen} aria-label={stage[voice].label}>
             <span className="ring"/><span className="ring wide"/>
             {voice==='listening'?<Square/>:voice==='speaking'?<Volume2/>:<Mic/>}
@@ -166,7 +182,7 @@ function Detail({item,trusted,back,speak,approve,trustedApprove,dismiss}:{item:R
   return <div className="detail-shell">
     <header><button className="back" onClick={back}><ArrowLeft/>Back</button><div className="brand"><div className="brandmark"><ShieldCheck/></div><div><b>Grandma Mode</b><span>Safety check</span></div></div></header>
     <main className="detail-main">
-      <div className={`verdict ${rc.color}`}><Icon/><div><p>Safety check</p><h1>{rc.label}</h1><span>Risk score {item.score} out of 100</span></div></div>
+      <div className={`verdict ${rc.color}`}><Icon/><div><p>Wolfie safety analysis</p><h1>{rc.label}</h1><span>Risk score {item.score} out of 100</span><span className="risk-meter" aria-hidden="true"><i style={{width:`${item.score}%`}}/></span></div></div>
       <button className="aloud" onClick={aloud}><Volume2/>Read this to me</button>
       <article className="message-card">
         <div className="sender"><div className="sender-icon"><UserRound/></div><div><small>Message from</small><h2>{item.source}</h2></div><span>{fmt(item.createdAt)}</span></div>
