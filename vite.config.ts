@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { defineConfig, loadEnv, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
 
-function callApi(phoneNumber:string|undefined):Plugin {
+function callApi(phoneNumber:string|undefined,apiKey:string|undefined,apiUrl:string):Plugin {
   return {name:'wolfie-call-api',configureServer(server){
     server.middlewares.use('/api/call-me',(request,response)=>{
       // Content-Type matters: a GET here is how the client probes whether this
@@ -64,22 +64,43 @@ function callApi(phoneNumber:string|undefined):Plugin {
         model:'turbo',max_duration:5,record:false,wait_for_greeting:true,voicemail_action:'leave_message',
         voicemail_message:`Hello, this is Wolfie, an automated assistant from Grandma Mode. I have a message from ${sender}. ${note?introducer+': '+note+'. ':''}Please call ${callBack} back on the number you already have. Thank you.`,
       });
+      const done=(status:number,payload:Record<string,unknown>)=>{response.statusCode=status;response.end(JSON.stringify(payload));};
+      const ok=(callId?:string,message?:string)=>done(200,{success:true,callId,message:message||'Call started.'});
+
+      // Two ways to reach the calling provider.
+      //
+      // 1. The Zero CLI: a local binary that brokers the paid API call. Only works
+      //    on a machine where it is installed and signed in.
+      // 2. Direct HTTP: set CALL_API_KEY (and optionally CALL_API_URL) and no local
+      //    binary is needed. This is the portable path, and the one that could work
+      //    from a real server rather than a dev machine.
+      if(apiKey){
+        void fetch(apiUrl,{method:'POST',headers:{'Content-Type':'application/json',Authorization:apiKey},body})
+          .then(async provider=>{
+            const payload=await provider.json().catch(()=>({})) as {call_id?:string,message?:string,errors?:unknown};
+            if(!provider.ok)return done(502,{error:`The call provider refused the call (${provider.status}). Check CALL_API_KEY and your balance.`});
+            ok(payload.call_id,payload.message);
+          })
+          .catch(()=>done(502,{error:'Could not reach the call provider.'}));
+        return;
+      }
+
       execFile(zero,['fetch','--capability','stablephone-call-9dc16e0e','--max-pay','0.60','--json','-d',body],{timeout:240_000,maxBuffer:1024*1024},(error,stdout)=>{
-        response.setHeader('Content-Type','application/json');
         if(error){
           const missing=(error as NodeJS.ErrnoException).code==='ENOENT';
-          response.statusCode=missing?501:502;
-          response.end(JSON.stringify({error:missing
-            ?'Automatic calling is not set up on this machine (the Zero runner was not found).'
-            :'The call service could not place the call. Check Zero sign-in and balance.'}));
-          return;
+          return done(missing?501:502,{error:missing
+            ?'Automatic calling is not set up here. Either install the Zero runner, or set CALL_API_KEY in .env.local to call the provider directly.'
+            :'The call service could not place the call. Check Zero sign-in and balance.'});
         }
-        try{const result=JSON.parse(stdout) as {ok?:boolean,body?:{call_id?:string,message?:string,success?:boolean}};if(!result.ok||result.body?.success===false)throw new Error('Call rejected');response.end(JSON.stringify({success:true,callId:result.body?.call_id,message:result.body?.message||'Call started.'}));}
-        catch{response.statusCode=502;response.end(JSON.stringify({error:'The call provider returned an unexpected response.'}));}
+        try{
+          const result=JSON.parse(stdout) as {ok?:boolean,body?:{call_id?:string,message?:string,success?:boolean}};
+          if(!result.ok||result.body?.success===false)throw new Error('Call rejected');
+          ok(result.body?.call_id,result.body?.message);
+        }catch{done(502,{error:'The call provider returned an unexpected response.'});}
       });
       });
     });
   }};
 }
 
-export default defineConfig(({mode})=>{const env=loadEnv(mode,process.cwd(),'');return {plugins:[react(),callApi(env.CALL_PHONE_NUMBER)]};});
+export default defineConfig(({mode})=>{const env=loadEnv(mode,process.cwd(),'');return {plugins:[react(),callApi(env.CALL_PHONE_NUMBER,env.CALL_API_KEY,env.CALL_API_URL||'https://api.bland.ai/v1/calls')]};});
