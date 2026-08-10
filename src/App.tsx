@@ -27,6 +27,11 @@ const stage:Record<VoiceState,{title:string,hint:string,label:string}>={
 const statusWord:Record<VoiceState,string>={idle:'Ready',listening:'Listening',thinking:'Checking',speaking:'Speaking'};
 const greeting=()=>{const h=new Date().getHours();return h<12?'Good morning':h<18?'Good afternoon':'Good evening'};
 const unpunctuated=(s:string)=>s.replace(/[.!?…]+\s*$/,'');
+// tel: with bare digits is ambiguous — some handlers treat it as a shortcode or
+// hand it to a video-capable app. E.164 asks unambiguously for a voice call to a
+// normal number. (Which app answers a tel: link is an OS setting the page cannot
+// override, so the number is shown as well.)
+const telHref=(phone:string)=>{const d=phone.replace(/\D/g,'');const e164=d.length===10?`+1${d}`:d.length===11&&d.startsWith('1')?`+${d}`:d?`+${d}`:'';return `tel:${e164}`;};
 const spokenList=(xs:string[])=>xs.length<2?xs.join(''):`${xs.slice(0,-1).join(', ')}, and ${xs[xs.length-1]}`;
 
 export default function App(){
@@ -329,7 +334,8 @@ export default function App(){
             ?<><p>Here is what you wanted to say — read it to {pendingCall.who}:</p>
                <p className="sheet-heard">“{callMessage.trim()}”</p></>
             :<p>Ask {pendingCall.who} to call you back when they can.</p>}
-          <a className="sheet-yes" href={`tel:${pendingCall.phone.replace(/\D/g,'')}`}>
+          <p className="sheet-number">{pendingCall.phone}</p>
+          <a className="sheet-yes" href={telHref(pendingCall.phone)}>
             <Phone/>Open my phone to call {pendingCall.who}
           </a>
           <button className="sheet-link" onClick={()=>{ voiceOS.stop(); setPendingCall(null); }}>Close</button>
