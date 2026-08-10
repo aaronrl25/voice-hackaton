@@ -38,6 +38,8 @@ export default function App(){
   const [lastTone,setLastTone]=useState<Tone>('neutral');
   const [wolfiePose,setWolfiePose]=useState(0);
   const [calling,setCalling]=useState(false);
+  const [pendingCall,setPendingCall]=useState<{who:string,phone?:string,lead:string}|null>(null);
+  const confirmRef=useRef<HTMLButtonElement|null>(null);
   const voiceRef=useRef<VoiceOSAdapter|null>(null); voiceRef.current??=new VoiceOSAdapter(); const voiceOS=voiceRef.current;
   const supported=useMemo(voiceSupported,[]);
   // Always begin with the public story. A saved profile is used only after the
@@ -54,6 +56,16 @@ export default function App(){
     const timer=window.setInterval(()=>setWolfiePose(current=>(current+1)%wolfieSpeechPoses.length),650);
     return ()=>window.clearInterval(timer);
   },[voice]);
+
+  // window.confirm gave Escape-to-cancel and focus for free; an in-app dialog has to
+  // provide both, or it is unusable by keyboard and invisible to a screen reader.
+  useEffect(()=>{
+    if(!pendingCall) return;
+    confirmRef.current?.focus();
+    const onKey=(event:KeyboardEvent)=>{ if(event.key==='Escape') setPendingCall(null); };
+    window.addEventListener('keydown',onKey);
+    return ()=>window.removeEventListener('keydown',onKey);
+  },[pendingCall]);
 
   useEffect(()=>{
     if(!uid||!firebaseReady)return;
@@ -80,7 +92,7 @@ export default function App(){
   function say(text:string, tone:Tone='neutral'){ setReply(text); setLastTone(tone); voiceOS.speak(text,setVoice,tone); }
   async function answer(text:string){
     setHeard(text);
-    if(/\b(call me|call my phone|ring me)\b/i.test(text)){await callMe();return;}
+    if(/\b(call me|call my phone|ring me)\b/i.test(text)){callMe();return;}
     const out=interpret(text,items,trusted.name);
     if(out.tab)setTab(out.tab);
     if(out.open)setSelected(out.open);
@@ -112,24 +124,25 @@ export default function App(){
   function approve(x:RequestItem){ if(x.risk==='medium'){update(x.id,{status:'completed',userApproved:true,receipt:'Confirmed by you · No sensitive information shared'});say("Nice, that's all done. I saved you a receipt.",'friendly');} else {update(x.id,{status:'awaiting_trusted',userApproved:true});say(`Got it, your approval is in. ${trusted.name} still needs to say yes before anything happens.`,'reassuring');} }
   function trustedApprove(x:RequestItem){update(x.id,{status:'approved',trustedApproved:true,receipt:'Dual approval recorded · Action remains paused for manual verification'});say("Alright, both approvals are in. Nothing has been sent yet.",'reassuring');}
   function block(x:RequestItem){update(x.id,{status:'blocked',receipt:'Blocked by you · Sender not contacted'});setSelected(null);say("Blocked. Nothing went out, and nobody got contacted.",'reassuring');}
-  async function callMe(){
-    if(!window.confirm('Start a real interactive AI phone conversation now? You can ask questions during the call. This costs up to $0.60 through Zero.'))return;
-    setCalling(true);setNotice('Starting your call…');
-    try{const result=await requestCall();setNotice(`${result.message} Your phone should ring shortly.`);say('Your call is on the way. Your phone should ring shortly.','friendly');}
-    catch(error){setNotice(error instanceof Error?error.message:'The call could not be started.');}
-    finally{setCalling(false);}
-  }
-  async function callContact(name:string,phone:string){
-    if(!window.confirm(`Start a real AI phone call to ${name} at ${phone}? This costs up to $0.60 through Zero.`))return;
-    setCalling(true);setNotice(`Calling ${name}…`);
+  // A real phone call that costs money is exactly the wrong thing to put behind a
+  // small native confirm dialog on a phone. Ask in the app's own language instead.
+  function callMe(){ setPendingCall({who:'you',lead:'Wolfie will ring your phone so you can talk out loud and ask anything.'}); }
+  function callContact(name:string,phone:string){ setPendingCall({who:name,phone,lead:`Wolfie will ring ${name} and let them know you would like to talk.`}); }
+
+  async function startCall(){
+    const request=pendingCall; if(!request) return;
+    setPendingCall(null); setCalling(true);
+    setNotice(request.phone?`Calling ${request.who}…`:'Starting your call…');
     try{
-      const result=await requestCall(phone);
-      setNotice(`${result.message} ${name}'s phone should ring shortly.`);
-      say(`The call to ${name} is on the way. Their phone should ring shortly.`,'friendly');
-    }catch{
-      const dialable=phone.replace(/\D/g,'');
-      setNotice(`Opening your phone to call ${name}…`);
-      window.location.href=`tel:${dialable}`;
+      const result=await requestCall(request.phone);
+      setNotice(`${result.message} ${request.phone?`${request.who}'s phone`:'Your phone'} should ring shortly.`);
+      say(request.phone?`The call to ${request.who} is on the way. Their phone should ring shortly.`:'Your call is on the way. Your phone should ring shortly.','friendly');
+    }catch(error){
+      if(request.phone){
+        const dialable=request.phone.replace(/\D/g,'');
+        setNotice(`Opening your phone to call ${request.who}…`);
+        window.location.href=`tel:${dialable}`;
+      } else setNotice(error instanceof Error?error.message:'The call could not be started.');
     }
     finally{setCalling(false);}
   }
@@ -223,6 +236,21 @@ export default function App(){
       <button className={tab==='activity'?'active':''} aria-current={tab==='activity'} onClick={()=>setTab('activity')}><Clock3/>Activity</button>
       <button className={tab==='people'?'active':''} aria-current={tab==='people'} onClick={()=>setTab('people')}><Users/>People</button>
     </nav>
+
+    {pendingCall&&<div className="sheet" role="dialog" aria-modal="true" aria-labelledby="call-title"
+      onClick={event=>{ if(event.target===event.currentTarget) setPendingCall(null); }}>
+      <div className="sheet-card">
+        <span className="sheet-icon"><Phone/></span>
+        <h2 id="call-title">{pendingCall.phone?`Call ${pendingCall.who}?`:'Call your phone?'}</h2>
+        <p>{pendingCall.lead}</p>
+        {pendingCall.phone&&<p className="sheet-number">{pendingCall.phone}</p>}
+        <button ref={confirmRef} className="sheet-yes" onClick={()=>void startCall()}>
+          <Phone/>{pendingCall.phone?`Yes, call ${pendingCall.who}`:'Yes, call me'}
+        </button>
+        <button className="sheet-no" onClick={()=>setPendingCall(null)}>No, not now</button>
+        <p className="sheet-note">This makes a real phone call. It costs up to 60 cents.</p>
+      </div>
+    </div>}
   </div>
 }
 
