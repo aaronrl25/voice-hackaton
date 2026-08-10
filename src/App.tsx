@@ -31,6 +31,7 @@ const unpunctuated=(s:string)=>s.replace(/[.!?…]+\s*$/,'');
 // hand it to a video-capable app. E.164 asks unambiguously for a voice call to a
 // normal number. (Which app answers a tel: link is an OS setting the page cannot
 // override, so the number is shown as well.)
+const isPhone=()=>/iPhone|iPod|Android.*Mobile|Windows Phone|BlackBerry|Opera Mini/i.test(navigator.userAgent);
 const telHref=(phone:string)=>{const d=phone.replace(/\D/g,'');const e164=d.length===10?`+1${d}`:d.length===11&&d.startsWith('1')?`+${d}`:d?`+${d}`:'';return `tel:${e164}`;};
 const spokenList=(xs:string[])=>xs.length<2?xs.join(''):`${xs.slice(0,-1).join(', ')}, and ${xs[xs.length-1]}`;
 
@@ -51,6 +52,7 @@ export default function App(){
   // deploy it simply is not there — better to find out before promising a call.
   const [canAutoCall,setCanAutoCall]=useState<boolean|null>(null);
   const [callFailure,setCallFailure]=useState('');
+  const [copied,setCopied]=useState(false);
   const confirmRef=useRef<HTMLButtonElement|null>(null);
   const voiceRef=useRef<VoiceOSAdapter|null>(null); voiceRef.current??=new VoiceOSAdapter(); const voiceOS=voiceRef.current;
   const supported=useMemo(voiceSupported,[]);
@@ -335,9 +337,18 @@ export default function App(){
                <p className="sheet-heard">“{callMessage.trim()}”</p></>
             :<p>Ask {pendingCall.who} to call you back when they can.</p>}
           <p className="sheet-number">{pendingCall.phone}</p>
-          <a className="sheet-yes" href={telHref(pendingCall.phone)}>
-            <Phone/>Open my phone to call {pendingCall.who}
-          </a>
+          {isPhone()
+            ?<a className="sheet-yes" href={telHref(pendingCall.phone)}>
+               <Phone/>Call {pendingCall.who} now
+             </a>
+            :<>
+               <p>Dial that number on your phone.</p>
+               <button className="sheet-yes" onClick={()=>{
+                 void navigator.clipboard?.writeText(pendingCall.phone).then(()=>{
+                   setCopied(true); window.setTimeout(()=>setCopied(false),2500);
+                 }).catch(()=>setCopied(false));
+               }}>{copied?<><Check/>Number copied</>:<><Phone/>Copy the number</>}</button>
+             </>}
           <button className="sheet-link" onClick={()=>{ voiceOS.stop(); setPendingCall(null); }}>Close</button>
         </>}
 
