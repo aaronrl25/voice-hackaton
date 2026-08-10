@@ -1,8 +1,8 @@
-export async function requestCall(phoneNumber?:string):Promise<{success:boolean;message:string;callId?:string}> {
+export async function requestCall(phoneNumber?:string, message?:string, from?:string):Promise<{success:boolean;message:string;callId?:string}> {
   const response=await fetch('/api/call-me',{
     method:'POST',
     headers:{Accept:'application/json','Content-Type':'application/json'},
-    body:JSON.stringify(phoneNumber?{phoneNumber}:{}),
+    body:JSON.stringify({...(phoneNumber?{phoneNumber}:{}),...(message?{message}:{}),...(from?{from}:{})}),
   });
   const contentType=response.headers.get('content-type')||'';
   if(!contentType.includes('application/json')){

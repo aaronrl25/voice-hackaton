@@ -187,7 +187,7 @@ nav svg{width:1.6rem;height:1.6rem}
    not hang off a small native dialog, and on a phone this sits under the thumb
    rather than at the top of the screen. */
 .sheet{position:fixed;inset:0;z-index:60;background:#06182ccc;backdrop-filter:blur(3px);display:flex;align-items:flex-end;justify-content:center;padding:1rem;padding-bottom:calc(1rem + env(safe-area-inset-bottom));animation:sheet-fade .18s ease-out}
-.sheet-card{width:100%;max-width:28rem;background:var(--card);color:var(--ink);border:1px solid var(--line);border-radius:1.6rem;padding:1.6rem 1.3rem 1.2rem;text-align:center;display:flex;flex-direction:column;align-items:center;gap:.75rem;box-shadow:0 1.5rem 3rem #06182c73;animation:sheet-rise .22s cubic-bezier(.2,.8,.3,1)}
+.sheet-card{width:100%;max-width:28rem;max-height:calc(100dvh - 2rem);overflow-y:auto;background:var(--card);color:var(--ink);border:1px solid var(--line);border-radius:1.6rem;padding:1.6rem 1.3rem 1.2rem;text-align:center;display:flex;flex-direction:column;align-items:center;gap:.75rem;box-shadow:0 1.5rem 3rem #06182c73;animation:sheet-rise .22s cubic-bezier(.2,.8,.3,1)}
 .sheet-icon{width:4rem;height:4rem;flex:none;border-radius:50%;background:#19b7c626;border:1px solid #19b7c659;color:var(--teal);display:grid;place-items:center}
 .sheet-icon svg{width:2rem;height:2rem}
 .sheet-card h2{font-size:clamp(1.4rem,5.5vw,1.7rem);color:var(--ink)}
@@ -197,6 +197,16 @@ nav svg{width:1.6rem;height:1.6rem}
 .sheet-yes svg{width:1.4rem;height:1.4rem}
 .sheet-no{min-height:3.7rem;width:100%;border:2px solid var(--line);background:transparent;color:var(--ink);border-radius:1.1rem;font-size:1.05rem;font-weight:700}
 .sheet-note{font-size:.9rem;color:var(--soft)}
+.sheet-mic{width:6rem;margin:.1rem 0}
+@media(max-height:820px){.sheet-mic{width:4.6rem}.sheet-card{gap:.55rem;padding-top:1.2rem}.sheet-card p{font-size:1rem}}
+.sheet-mic .ring{inset:-.7rem}
+.sheet-state{margin:0;font-weight:700;color:var(--teal);font-size:1rem}
+.sheet-heard{margin:0;font-size:1.1rem;font-weight:600;color:var(--ink);background:#19b7c614;border:2px solid var(--line);border-radius:1rem;padding:.7rem 1rem;max-width:24rem}
+.sheet-input{width:100%;max-width:24rem;min-height:6rem;border:2px solid var(--line);border-radius:1rem;padding:.8rem 1rem;font:inherit;font-size:1.1rem;color:var(--ink);background:#06172c;resize:vertical}
+.sheet-input::placeholder{color:var(--soft)}
+.sheet-input:focus{outline:.15rem solid var(--teal);outline-offset:.1rem}
+.sheet-yes:disabled{opacity:.4;cursor:not-allowed}
+.sheet-link{min-height:3rem;border:0;background:none;color:var(--teal);font-weight:700;font-size:1rem;text-decoration:underline;text-underline-offset:.25rem}
 @keyframes sheet-fade{from{opacity:0}to{opacity:1}}
 @keyframes sheet-rise{from{transform:translateY(1.5rem);opacity:0}to{transform:none;opacity:1}}
 @media(min-width:48rem){.sheet{align-items:center;padding:2rem}.sheet-card{padding:2rem 1.8rem 1.4rem}}

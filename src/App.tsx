@@ -38,7 +38,10 @@ export default function App(){
   const [lastTone,setLastTone]=useState<Tone>('neutral');
   const [wolfiePose,setWolfiePose]=useState(0);
   const [calling,setCalling]=useState(false);
-  const [pendingCall,setPendingCall]=useState<{who:string,phone:string,lead:string}|null>(null);
+  const [pendingCall,setPendingCall]=useState<{who:string,phone:string}|null>(null);
+  const [callMessage,setCallMessage]=useState('');
+  const [callStep,setCallStep]=useState<'compose'|'confirm'>('compose');
+  const [typingMessage,setTypingMessage]=useState(false);
   const confirmRef=useRef<HTMLButtonElement|null>(null);
   const voiceRef=useRef<VoiceOSAdapter|null>(null); voiceRef.current??=new VoiceOSAdapter(); const voiceOS=voiceRef.current;
   const supported=useMemo(voiceSupported,[]);
@@ -61,11 +64,12 @@ export default function App(){
   // provide both, or it is unusable by keyboard and invisible to a screen reader.
   useEffect(()=>{
     if(!pendingCall) return;
-    confirmRef.current?.focus();
-    const onKey=(event:KeyboardEvent)=>{ if(event.key==='Escape') setPendingCall(null); };
+    // confirmRef only exists on the confirm step; on compose the mic leads.
+    if(callStep==='confirm') confirmRef.current?.focus();
+    const onKey=(event:KeyboardEvent)=>{ if(event.key==='Escape'){ voiceOS.stop(); setPendingCall(null); } };
     window.addEventListener('keydown',onKey);
     return ()=>window.removeEventListener('keydown',onKey);
-  },[pendingCall]);
+  },[pendingCall,callStep,voiceOS]);
 
   useEffect(()=>{
     if(!uid||!firebaseReady)return;
@@ -126,18 +130,30 @@ export default function App(){
   function block(x:RequestItem){update(x.id,{status:'blocked',receipt:'Blocked by you · Sender not contacted'});setSelected(null);say("Blocked. Nothing went out, and nobody got contacted.",'reassuring');}
   // A real phone call that costs money is exactly the wrong thing to put behind a
   // small native confirm dialog on a phone. Ask in the app's own language instead.
-  // Every call goes out to a trusted person, never to the user: the call script
-  // introduces Wolfie and says "your trusted person asked me to call". Naming who is
-  // about to be rung is the whole point of asking — "call me" described neither the
-  // destination nor what actually happens.
-  function callContact(name:string,phone:string){ setPendingCall({who:name,phone,lead:`Wolfie will ring ${name} and let them know you would like to talk.`}); }
+  // Wolfie delivers a message and asks them to call back — it never holds a
+  // conversation, and never takes an approval. So the user has to say what they
+  // want passed on before the call is placed.
+  function callContact(name:string,phone:string){
+    setCallMessage(''); setTypingMessage(false); setCallStep('compose');
+    setPendingCall({who:name,phone});
+  }
+  function dictateMessage(){
+    if(voice==='listening'){ voiceOS.stop(); return; }
+    voiceOS.cancelSpeech();
+    voiceOS.start({
+      onState:setVoice,
+      onInterim:setCallMessage,
+      onTranscript:text=>{ setCallMessage(text); setCallStep('confirm'); },
+      onError:code=>{ setVoice('idle'); setNotice(voiceError(code)); setTypingMessage(true); },
+    });
+  }
 
   async function startCall(){
     const request=pendingCall; if(!request) return;
     setPendingCall(null); setCalling(true);
     setNotice(`Calling ${request.who}…`);
     try{
-      const result=await requestCall(request.phone);
+      const result=await requestCall(request.phone,callMessage.trim(),profile.name||undefined);
       setNotice(`${result.message} ${request.who}'s phone should ring shortly.`);
       say(`The call to ${request.who} is on the way. Their phone should ring shortly.`,'friendly');
     }catch(error){
@@ -241,16 +257,52 @@ export default function App(){
     </nav>
 
     {pendingCall&&<div className="sheet" role="dialog" aria-modal="true" aria-labelledby="call-title"
-      onClick={event=>{ if(event.target===event.currentTarget) setPendingCall(null); }}>
+      onClick={event=>{ if(event.target===event.currentTarget){ voiceOS.stop(); setPendingCall(null); } }}>
       <div className="sheet-card">
-        <span className="sheet-icon"><Phone/></span>
-        <h2 id="call-title">{pendingCall.phone?`Call ${pendingCall.who}?`:'Call your phone?'}</h2>
-        <p>{pendingCall.lead}</p>
-        {pendingCall.phone&&<p className="sheet-number">{pendingCall.phone}</p>}
-        <button ref={confirmRef} className="sheet-yes" onClick={()=>void startCall()}>
-          <Phone/>{pendingCall.phone?`Yes, call ${pendingCall.who}`:'Yes, call me'}
-        </button>
-        <button className="sheet-no" onClick={()=>setPendingCall(null)}>No, not now</button>
+        {callStep==='confirm'&&<span className="sheet-icon"><Phone/></span>}
+
+        {callStep==='compose'?<>
+          <h2 id="call-title">What should I tell {pendingCall.who}?</h2>
+          <p>I will pass it on and ask them to call you back.</p>
+
+          {!typingMessage&&<>
+            <button className={`mic sheet-mic ${voice}`} onClick={dictateMessage}
+              aria-label={voice==='listening'?'Stop recording your message':`Tap and say your message for ${pendingCall.who}`}>
+              <span className="ring"/>
+              {voice==='listening'?<Square/>:<Mic/>}
+            </button>
+            <p className="sheet-state" aria-live="polite">{voice==='listening'?'I’m listening…':'Tap and say it out loud'}</p>
+          </>}
+
+          {typingMessage&&<textarea className="sheet-input" value={callMessage} rows={3} autoFocus
+            aria-label={`Message for ${pendingCall.who}`} placeholder={`Tell ${pendingCall.who}…`}
+            onChange={event=>setCallMessage(event.target.value)}/>}
+
+          {callMessage&&!typingMessage&&<p className="sheet-heard">“{callMessage}”</p>}
+
+          <button className="sheet-yes" disabled={!callMessage.trim()} onClick={()=>setCallStep('confirm')}>
+            <Check/>That’s my message
+          </button>
+          <button className="sheet-no" onClick={()=>{ voiceOS.stop(); setCallMessage(''); setCallStep('confirm'); }}>
+            Just ask {pendingCall.who} to call me
+          </button>
+          <button className="sheet-link" onClick={()=>{ voiceOS.stop(); setTypingMessage(value=>!value); }}>
+            {typingMessage?'Say it out loud instead':'Type it instead'}
+          </button>
+        </>:<>
+          <h2 id="call-title">Call {pendingCall.who}?</h2>
+          {callMessage.trim()
+            ?<><p>I will say this to {pendingCall.who}, then ask them to call you back:</p>
+               <p className="sheet-heard">“{callMessage.trim()}”</p></>
+            :<p>I will ask {pendingCall.who} to call you back. No message.</p>}
+          <p className="sheet-number">{pendingCall.phone}</p>
+          <button ref={confirmRef} className="sheet-yes" onClick={()=>void startCall()}>
+            <Phone/>Yes, call {pendingCall.who}
+          </button>
+          <button className="sheet-no" onClick={()=>setCallStep('compose')}>Change the message</button>
+          <button className="sheet-link" onClick={()=>{ voiceOS.stop(); setPendingCall(null); }}>No, not now</button>
+        </>}
+
         <p className="sheet-note">This makes a real phone call. It costs up to 60 cents.</p>
       </div>
     </div>}
