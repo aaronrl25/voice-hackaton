@@ -193,6 +193,7 @@ nav svg{width:1.6rem;height:1.6rem}
 .sheet-card h2{font-size:clamp(1.4rem,5.5vw,1.7rem);color:var(--ink)}
 .sheet-card p{margin:0;color:var(--soft);font-size:1.05rem;max-width:22rem}
 .sheet-number{font-weight:700;color:var(--ink);font-size:1.2rem;letter-spacing:.01em;border:2px solid var(--line);border-radius:.7rem;padding:.35rem .9rem}
+a.sheet-yes{text-decoration:none}
 .sheet-yes{min-height:4.2rem;width:100%;margin-top:.4rem;border:2px solid var(--teal);background:var(--teal);color:var(--navy);border-radius:1.1rem;font-size:1.15rem;font-weight:700;display:flex;align-items:center;justify-content:center;gap:.6rem}
 .sheet-yes svg{width:1.4rem;height:1.4rem}
 .sheet-no{min-height:3.7rem;width:100%;border:2px solid var(--line);background:transparent;color:var(--ink);border-radius:1.1rem;font-size:1.05rem;font-weight:700}

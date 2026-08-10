@@ -40,8 +40,12 @@ export default function App(){
   const [calling,setCalling]=useState(false);
   const [pendingCall,setPendingCall]=useState<{who:string,phone:string}|null>(null);
   const [callMessage,setCallMessage]=useState('');
-  const [callStep,setCallStep]=useState<'compose'|'confirm'>('compose');
+  const [callStep,setCallStep]=useState<'compose'|'confirm'|'manual'>('compose');
   const [typingMessage,setTypingMessage]=useState(false);
+  // null while unknown. The endpoint is a Vite dev middleware, so on any static
+  // deploy it simply is not there — better to find out before promising a call.
+  const [canAutoCall,setCanAutoCall]=useState<boolean|null>(null);
+  const [callFailure,setCallFailure]=useState('');
   const confirmRef=useRef<HTMLButtonElement|null>(null);
   const voiceRef=useRef<VoiceOSAdapter|null>(null); voiceRef.current??=new VoiceOSAdapter(); const voiceOS=voiceRef.current;
   const supported=useMemo(voiceSupported,[]);
@@ -70,6 +74,16 @@ export default function App(){
     window.addEventListener('keydown',onKey);
     return ()=>window.removeEventListener('keydown',onKey);
   },[pendingCall,callStep,voiceOS]);
+
+  useEffect(()=>{
+    let live=true;
+    // A GET returns 405 JSON when the endpoint exists, and index.html when it does not.
+    void fetch('/api/call-me',{method:'GET'})
+      .then(response=>response.status===405||(response.headers.get('content-type')||'').includes('application/json'))
+      .catch(()=>false)
+      .then(available=>{ if(live) setCanAutoCall(available); });
+    return ()=>{live=false};
+  },[]);
 
   useEffect(()=>{
     if(!uid||!firebaseReady)return;
@@ -150,18 +164,19 @@ export default function App(){
 
   async function startCall(){
     const request=pendingCall; if(!request) return;
-    setPendingCall(null); setCalling(true);
-    setNotice(`Calling ${request.who}…`);
+    if(canAutoCall===false){ setCallFailure(''); setCallStep('manual'); return; }
+    setCalling(true); setNotice(`Calling ${request.who}…`);
     try{
       const result=await requestCall(request.phone,callMessage.trim(),profile.name||undefined);
+      setPendingCall(null);
       setNotice(`${result.message} ${request.who}'s phone should ring shortly.`);
       say(`The call to ${request.who} is on the way. Their phone should ring shortly.`,'friendly');
     }catch(error){
-      if(request.phone){
-        const dialable=request.phone.replace(/\D/g,'');
-        setNotice(`Opening your phone to call ${request.who}…`);
-        window.location.href=`tel:${dialable}`;
-      } else setNotice(error instanceof Error?error.message:'The call could not be started.');
+      // Never silently swallow the message the person just dictated: keep it on
+      // screen so they can read it out themselves.
+      setCallFailure(error instanceof Error?error.message:'The call could not be started.');
+      setCallStep('manual');
+      say(`I could not call ${request.who} myself. I will show you what to say, and open your phone.`,'reassuring');
     }
     finally{setCalling(false);}
   }
@@ -261,9 +276,11 @@ export default function App(){
       <div className="sheet-card">
         {callStep==='confirm'&&<span className="sheet-icon"><Phone/></span>}
 
-        {callStep==='compose'?<>
+        {callStep==='compose'&&<>
           <h2 id="call-title">What should I tell {pendingCall.who}?</h2>
-          <p>I will pass it on and ask them to call you back.</p>
+          <p>{canAutoCall===false
+            ?'I will show you what to say, then open your phone so you can call.'
+            :'I will pass it on and ask them to call you back.'}</p>
 
           {!typingMessage&&<>
             <button className={`mic sheet-mic ${voice}`} onClick={dictateMessage}
@@ -289,21 +306,36 @@ export default function App(){
           <button className="sheet-link" onClick={()=>{ voiceOS.stop(); setTypingMessage(value=>!value); }}>
             {typingMessage?'Say it out loud instead':'Type it instead'}
           </button>
-        </>:<>
+        </>}
+
+        {callStep==='confirm'&&<>
           <h2 id="call-title">Call {pendingCall.who}?</h2>
           {callMessage.trim()
             ?<><p>I will say this to {pendingCall.who}, then ask them to call you back:</p>
                <p className="sheet-heard">“{callMessage.trim()}”</p></>
             :<p>I will ask {pendingCall.who} to call you back. No message.</p>}
           <p className="sheet-number">{pendingCall.phone}</p>
-          <button ref={confirmRef} className="sheet-yes" onClick={()=>void startCall()}>
-            <Phone/>Yes, call {pendingCall.who}
+          <button ref={confirmRef} className="sheet-yes" onClick={()=>void startCall()} disabled={calling}>
+            <Phone/>{calling?'Calling…':canAutoCall===false?`Open my phone to call ${pendingCall.who}`:`Yes, call ${pendingCall.who}`}
           </button>
           <button className="sheet-no" onClick={()=>setCallStep('compose')}>Change the message</button>
           <button className="sheet-link" onClick={()=>{ voiceOS.stop(); setPendingCall(null); }}>No, not now</button>
         </>}
 
-        <p className="sheet-note">This makes a real phone call. It costs up to 60 cents.</p>
+        {callStep==='manual'&&<>
+          <h2 id="call-title">Call {pendingCall.who} yourself</h2>
+          <p>{callFailure||`I cannot place calls from here, so ${pendingCall.who} will not hear anything from me.`}</p>
+          {callMessage.trim()
+            ?<><p>Here is what you wanted to say — read it to {pendingCall.who}:</p>
+               <p className="sheet-heard">“{callMessage.trim()}”</p></>
+            :<p>Ask {pendingCall.who} to call you back when they can.</p>}
+          <a className="sheet-yes" href={`tel:${pendingCall.phone.replace(/\D/g,'')}`}>
+            <Phone/>Open my phone to call {pendingCall.who}
+          </a>
+          <button className="sheet-link" onClick={()=>{ voiceOS.stop(); setPendingCall(null); }}>Close</button>
+        </>}
+
+        {callStep!=='manual'&&<p className="sheet-note">This makes a real phone call. It costs up to 60 cents.</p>}
       </div>
     </div>}
   </div>

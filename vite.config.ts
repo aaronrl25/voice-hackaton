@@ -1,10 +1,16 @@
 import { execFile } from 'node:child_process';
+import { existsSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { join } from 'node:path';
 import { defineConfig, loadEnv, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
 
 function callApi(phoneNumber:string|undefined):Plugin {
   return {name:'wolfie-call-api',configureServer(server){
     server.middlewares.use('/api/call-me',(request,response)=>{
+      // Content-Type matters: a GET here is how the client probes whether this
+      // endpoint exists at all, which it does not on a static deploy.
+      response.setHeader('Content-Type','application/json');
       if(request.method!=='POST'){response.statusCode=405;response.end(JSON.stringify({error:'Method not allowed'}));return;}
       let raw='';
       request.on('data',chunk=>{raw+=String(chunk);if(raw.length>10_000)request.destroy();});
@@ -22,7 +28,11 @@ function callApi(phoneNumber:string|undefined):Plugin {
       const digits=(requested||phoneNumber||'').replace(/\D/g,'');
       const destination=digits.length===10?`+1${digits}`:digits.length===11&&digits.startsWith('1')?`+${digits}`:'';
       if(!destination){response.statusCode=400;response.end(JSON.stringify({error:'A valid US contact number is required.'}));return;}
-      const zero=process.env.ZERO_RUNNER||'/Users/aaronramirez/.zero/runtime/bin/zero';
+      // Was hardcoded to one developer's home directory, so calling silently failed
+      // for everyone else. Prefer an explicit override, then this user's install,
+      // then whatever is on PATH.
+      const candidates=[process.env.ZERO_RUNNER,join(homedir(),'.zero','runtime','bin','zero')].filter(Boolean) as string[];
+      const zero=candidates.find(path=>existsSync(path))??'zero';
       // Deliver one message and end. The call must not become a channel for
       // approvals or instructions: a trusted contact saying "yes, go ahead" to an
       // automated caller would collapse the two-person gate into one phone call,
@@ -42,7 +52,14 @@ function callApi(phoneNumber:string|undefined):Plugin {
       const body=JSON.stringify({phone_number:destination,task,first_sentence:`Hello, this is an automated assistant calling from Grandma Mode on behalf of ${caller}. I have a short message for you.`,model:'turbo',max_duration:5,record:false,wait_for_greeting:true,voicemail_action:'leave_message',voicemail_message:`Hello, this is an automated assistant from Grandma Mode. ${caller} would like to talk. ${note?'She said: '+note+' ':''}Please call her back on the number you already have for her.`});
       execFile(zero,['fetch','--capability','stablephone-call-9dc16e0e','--max-pay','0.60','--json','-d',body],{timeout:240_000,maxBuffer:1024*1024},(error,stdout)=>{
         response.setHeader('Content-Type','application/json');
-        if(error){response.statusCode=502;response.end(JSON.stringify({error:'The call service could not place the call. Check Zero sign-in and balance.'}));return;}
+        if(error){
+          const missing=(error as NodeJS.ErrnoException).code==='ENOENT';
+          response.statusCode=missing?501:502;
+          response.end(JSON.stringify({error:missing
+            ?'Automatic calling is not set up on this machine (the Zero runner was not found).'
+            :'The call service could not place the call. Check Zero sign-in and balance.'}));
+          return;
+        }
         try{const result=JSON.parse(stdout) as {ok?:boolean,body?:{call_id?:string,message?:string,success?:boolean}};if(!result.ok||result.body?.success===false)throw new Error('Call rejected');response.end(JSON.stringify({success:true,callId:result.body?.call_id,message:result.body?.message||'Call started.'}));}
         catch{response.statusCode=502;response.end(JSON.stringify({error:'The call provider returned an unexpected response.'}));}
       });
