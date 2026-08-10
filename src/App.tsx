@@ -38,7 +38,7 @@ export default function App(){
   const [lastTone,setLastTone]=useState<Tone>('neutral');
   const [wolfiePose,setWolfiePose]=useState(0);
   const [calling,setCalling]=useState(false);
-  const [pendingCall,setPendingCall]=useState<{who:string,phone?:string,lead:string}|null>(null);
+  const [pendingCall,setPendingCall]=useState<{who:string,phone:string,lead:string}|null>(null);
   const confirmRef=useRef<HTMLButtonElement|null>(null);
   const voiceRef=useRef<VoiceOSAdapter|null>(null); voiceRef.current??=new VoiceOSAdapter(); const voiceOS=voiceRef.current;
   const supported=useMemo(voiceSupported,[]);
@@ -92,7 +92,7 @@ export default function App(){
   function say(text:string, tone:Tone='neutral'){ setReply(text); setLastTone(tone); voiceOS.speak(text,setVoice,tone); }
   async function answer(text:string){
     setHeard(text);
-    if(/\b(call me|call my phone|ring me)\b/i.test(text)){callMe();return;}
+    if(/\b(call me|call my phone|ring me|call my trusted|call someone i trust)\b/i.test(text)){callContact(trusted.name,trusted.phone);return;}
     const out=interpret(text,items,trusted.name);
     if(out.tab)setTab(out.tab);
     if(out.open)setSelected(out.open);
@@ -126,17 +126,20 @@ export default function App(){
   function block(x:RequestItem){update(x.id,{status:'blocked',receipt:'Blocked by you · Sender not contacted'});setSelected(null);say("Blocked. Nothing went out, and nobody got contacted.",'reassuring');}
   // A real phone call that costs money is exactly the wrong thing to put behind a
   // small native confirm dialog on a phone. Ask in the app's own language instead.
-  function callMe(){ setPendingCall({who:'you',lead:'Wolfie will ring your phone so you can talk out loud and ask anything.'}); }
+  // Every call goes out to a trusted person, never to the user: the call script
+  // introduces Wolfie and says "your trusted person asked me to call". Naming who is
+  // about to be rung is the whole point of asking — "call me" described neither the
+  // destination nor what actually happens.
   function callContact(name:string,phone:string){ setPendingCall({who:name,phone,lead:`Wolfie will ring ${name} and let them know you would like to talk.`}); }
 
   async function startCall(){
     const request=pendingCall; if(!request) return;
     setPendingCall(null); setCalling(true);
-    setNotice(request.phone?`Calling ${request.who}…`:'Starting your call…');
+    setNotice(`Calling ${request.who}…`);
     try{
       const result=await requestCall(request.phone);
-      setNotice(`${result.message} ${request.phone?`${request.who}'s phone`:'Your phone'} should ring shortly.`);
-      say(request.phone?`The call to ${request.who} is on the way. Their phone should ring shortly.`:'Your call is on the way. Your phone should ring shortly.','friendly');
+      setNotice(`${result.message} ${request.who}'s phone should ring shortly.`);
+      say(`The call to ${request.who} is on the way. Their phone should ring shortly.`,'friendly');
     }catch(error){
       if(request.phone){
         const dialable=request.phone.replace(/\D/g,'');
@@ -165,7 +168,7 @@ export default function App(){
   return <div className="shell">
     <header>
       <div className="brand"><div className="brandmark"><ShieldCheck/></div><div><b>Grandma Mode</b><span>Safe help, every step</span></div></div>
-      <button className="help" onClick={callMe} disabled={calling}><Phone/><span>{calling?'Calling…':'Call me now'}</span></button>
+      <button className="help" onClick={()=>callContact(trusted.name,trusted.phone)} disabled={calling}><Phone/><span>{calling?'Calling…':`Call ${trusted.name}`}</span></button>
     </header>
     <main>
       {notice&&<div className="notice" role="status"><Info/><p>{notice}</p><button aria-label="Dismiss message" onClick={()=>setNotice('')}><X/></button></div>}
