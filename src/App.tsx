@@ -119,6 +119,20 @@ export default function App(){
     catch(error){setNotice(error instanceof Error?error.message:'The call could not be started.');}
     finally{setCalling(false);}
   }
+  async function callContact(name:string,phone:string){
+    if(!window.confirm(`Start a real AI phone call to ${name} at ${phone}? This costs up to $0.60 through Zero.`))return;
+    setCalling(true);setNotice(`Calling ${name}…`);
+    try{
+      const result=await requestCall(phone);
+      setNotice(`${result.message} ${name}'s phone should ring shortly.`);
+      say(`The call to ${name} is on the way. Their phone should ring shortly.`,'friendly');
+    }catch{
+      const dialable=phone.replace(/\D/g,'');
+      setNotice(`Opening your phone to call ${name}…`);
+      window.location.href=`tel:${dialable}`;
+    }
+    finally{setCalling(false);}
+  }
 
   if(!authed) return <Landing onEnter={async(isNewAccount,userId)=>{
     setUid(userId);
@@ -199,7 +213,7 @@ export default function App(){
               ?<em className="trusted-badge"><Check/>Your trusted person</em>
               :<button className="trusted-choose" onClick={()=>{const next={...profile,trustedId:c.id};saveProfile(next);setProfile(next);if(uid&&firebaseReady)void writeProfile(uid,next);say(`Okay. From now on I'll check with ${c.name}.`,'reassuring');}}>Make {c.name} my trusted person</button>}
           </div>
-          <button aria-label={`Call ${c.name}`}><Phone/></button>
+          <button type="button" aria-label={`Call ${c.name} at ${c.phone}`} disabled={calling} onClick={()=>void callContact(c.name,c.phone)}><Phone/></button>
         </article>)}</div>
         <div className="info-panel"><LockKeyhole/><div><h3>Two people, one safe decision</h3><p>Grandma Mode never completes a high-risk action unless both you and a trusted person approve.</p></div></div>
       </div>}
